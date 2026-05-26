@@ -1,12 +1,14 @@
 package com.example.demo.auth;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -43,6 +45,8 @@ public class AppUser {
     private boolean profileCompleted;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "app_user_majors", joinColumns = @JoinColumn(name = "app_user_id"))
+    @Column(name = "majors")
     private List<String> majors = new ArrayList<>();
 
     @Column(nullable = false)

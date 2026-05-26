@@ -3,6 +3,7 @@ package com.example.demo.post;
 import com.example.demo.auth.AppUser;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -56,9 +57,13 @@ public class Post {
     private int viewCount;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "post_tags", joinColumns = @JoinColumn(name = "post_id"))
+    @Column(name = "tags")
     private List<String> tags = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "post_majors", joinColumns = @JoinColumn(name = "post_id"))
+    @Column(name = "majors")
     private List<String> majors = new ArrayList<>();
 
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
@@ -93,9 +98,13 @@ public class Post {
     private String bugActual;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "post_bug_reproduction_steps", joinColumns = @JoinColumn(name = "post_id"))
+    @Column(name = "bug_reproduction_steps")
     private List<String> bugReproductionSteps = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "post_bug_labels", joinColumns = @JoinColumn(name = "post_id"))
+    @Column(name = "bug_labels")
     private List<String> bugLabels = new ArrayList<>();
 
     @Column(nullable = false)
