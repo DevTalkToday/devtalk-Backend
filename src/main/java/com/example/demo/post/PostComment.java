@@ -54,6 +54,10 @@ public class PostComment {
         return id;
     }
 
+    public Post getPost() {
+        return post;
+    }
+
     public AppUser getAuthor() {
         return author;
     }

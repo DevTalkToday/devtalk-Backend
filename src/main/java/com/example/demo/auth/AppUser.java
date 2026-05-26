@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,6 +34,10 @@ public class AppUser {
 
     @Column(length = 500)
     private String description;
+
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String avatarUrl;
 
     @Column(nullable = false)
     private boolean profileCompleted;
@@ -87,6 +92,10 @@ public class AppUser {
         return description;
     }
 
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
     public boolean isProfileCompleted() {
         return profileCompleted;
     }
@@ -105,5 +114,15 @@ public class AppUser {
         this.description = description;
         this.majors = majors == null ? new ArrayList<>() : new ArrayList<>(majors);
         this.profileCompleted = true;
+    }
+
+    public void updateProfile(String nickname, String description, List<String> majors) {
+        this.nickname = nickname;
+        this.description = description;
+        this.majors = majors == null ? new ArrayList<>() : new ArrayList<>(majors);
+    }
+
+    public void updateAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 }

@@ -106,8 +106,8 @@ public class PostController {
             @PathVariable Long commentId,
             @RequestBody CommentAcceptPayload request
     ) {
-        authService.authenticate(readBearerToken(authorization));
-        return postService.setAcceptedComment(id, commentId, request);
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.setAcceptedComment(id, commentId, request, user);
     }
 
     @DeleteMapping("/{id}/comments/{commentId}")

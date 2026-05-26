@@ -10,6 +10,7 @@ public record UserResponse(
         String nickname,
         String email,
         String description,
+        String avatarUrl,
         boolean profileCompleted,
         List<String> majors,
         Instant createdAt
@@ -21,6 +22,7 @@ public record UserResponse(
                 user.getNickname(),
                 user.getEmail(),
                 user.getDescription(),
+                user.getAvatarUrl(),
                 user.isProfileCompleted(),
                 user.getMajors(),
                 user.getCreatedAt()

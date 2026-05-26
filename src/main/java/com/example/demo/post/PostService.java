@@ -1,6 +1,7 @@
 package com.example.demo.post;
 
 import com.example.demo.auth.AppUser;
+import com.example.demo.notification.NotificationService;
 import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,10 +23,16 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
+    private final NotificationService notificationService;
 
-    public PostService(PostRepository postRepository, PostCommentRepository commentRepository) {
+    public PostService(
+            PostRepository postRepository,
+            PostCommentRepository commentRepository,
+            NotificationService notificationService
+    ) {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
+        this.notificationService = notificationService;
     }
 
     public PostListResponse listPosts(
@@ -111,6 +118,8 @@ public class PostService {
         String body = normalizeCommentBody(request == null ? null : request.body());
         PostComment comment = new PostComment(post, author, body);
         post.addComment(comment);
+        commentRepository.save(comment);
+        notificationService.createPostCommentNotification(post, comment);
         return toResponse(post);
     }
 
@@ -133,17 +142,22 @@ public class PostService {
     }
 
     @Transactional
-    public PostResponse setAcceptedComment(Long postId, Long commentId, CommentAcceptPayload request) {
+    public PostResponse setAcceptedComment(Long postId, Long commentId, CommentAcceptPayload request, AppUser actor) {
         Post post = findPost(postId);
         if ("talk".equals(post.getCategory())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COMMENT_ACCEPT_ONLY_FOR_QNA_OR_BUG");
         }
-        findComment(postId, commentId);
+        PostComment comment = findComment(postId, commentId);
         if (request == null || request.accepted() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "COMMENT_ACCEPTED_REQUIRED");
         }
 
-        post.setAcceptedCommentId(request.accepted() ? commentId : null);
+        if (request.accepted()) {
+            post.setAcceptedCommentId(commentId);
+            notificationService.createCommentAcceptedNotification(post, comment, actor);
+        } else {
+            post.setAcceptedCommentId(null);
+        }
         return toResponse(post);
     }
 
@@ -328,13 +342,13 @@ public class PostService {
                 comment.getCreatedAt(),
                 comment.getUpdatedAt(),
                 comment.getLikeCount(),
-                comment.getId().equals(acceptedCommentId)
+                acceptedCommentId != null && acceptedCommentId.equals(comment.getId())
         );
     }
 
     private PostAuthorResponse toAuthorResponse(AppUser user) {
         String role = user.getMajors().isEmpty() ? "Member" : String.join(", ", user.getMajors());
-        return new PostAuthorResponse(String.valueOf(user.getId()), user.getNickname(), role, null);
+        return new PostAuthorResponse(String.valueOf(user.getId()), user.getNickname(), role, user.getAvatarUrl());
     }
 
     private QuestionResponse toQuestionResponse(Post post) {
