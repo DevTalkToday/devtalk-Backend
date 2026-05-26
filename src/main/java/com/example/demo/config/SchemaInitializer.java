@@ -27,9 +27,12 @@ public class SchemaInitializer implements CommandLineRunner {
     private void createCollectionTable(String tableName, String ownerColumn, String valueColumn) {
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS `%s` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
                     `%s` BIGINT NOT NULL,
-                    `%s` VARCHAR(255)
+                    `%s` VARCHAR(255),
+                    PRIMARY KEY (`id`),
+                    INDEX `%s` (`%s`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """.formatted(tableName, ownerColumn, valueColumn));
+                """.formatted(tableName, ownerColumn, valueColumn, "idx_" + tableName + "_owner", ownerColumn));
     }
 }
