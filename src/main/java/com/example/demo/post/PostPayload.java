@@ -28,7 +28,7 @@ public record PostPayload(
             String actual,
             List<String> reproductionSteps,
             List<String> labels,
-            int watchers,
+            Integer watchers,
             String acceptedCommentId
     ) {
     }

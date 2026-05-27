@@ -219,7 +219,7 @@ public class PostService {
                     clamp(source == null ? null : source.actual(), 240),
                     cleanList(source == null ? null : source.reproductionSteps(), 8),
                     cleanList(source == null ? null : source.labels(), 6),
-                    source == null ? 0 : Math.max(source.watchers(), 0),
+                    source == null || source.watchers() == null ? 0 : Math.max(source.watchers(), 0),
                     source == null ? null : source.acceptedCommentId()
             );
         }
