@@ -20,6 +20,9 @@ public record PostResponse(
         List<String> majors,
         List<PostCommentResponse> comments,
         QuestionResponse question,
-        BugResponse bug
+        BugResponse bug,
+        boolean canEdit,
+        boolean canDelete,
+        boolean canAcceptComments
 ) {
 }

@@ -2,6 +2,7 @@ package com.example.demo.post;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.auth.AuthService;
+import com.example.demo.auth.AuthToken;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -52,10 +53,11 @@ public class PostController {
 
     @GetMapping("/{id}")
     public PostResponse getPost(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable Long id,
             @RequestParam(name = "track", defaultValue = "true") boolean track
     ) {
-        return postService.getPost(id, track);
+        return postService.getPost(id, track, resolveViewer(authorization));
     }
 
     @PutMapping("/{id}")
@@ -64,8 +66,8 @@ public class PostController {
             @PathVariable Long id,
             @RequestBody PostPayload request
     ) {
-        authService.authenticate(readBearerToken(authorization));
-        return postService.updatePost(id, request);
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.updatePost(id, request, user);
     }
 
     @DeleteMapping("/{id}")
@@ -73,8 +75,8 @@ public class PostController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable Long id
     ) {
-        authService.authenticate(readBearerToken(authorization));
-        postService.deletePost(id);
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        postService.deletePost(id, user);
         return ResponseEntity.noContent().build();
     }
 
@@ -95,8 +97,8 @@ public class PostController {
             @PathVariable Long commentId,
             @RequestBody CommentPayload request
     ) {
-        authService.authenticate(readBearerToken(authorization));
-        return postService.updateComment(id, commentId, request);
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.updateComment(id, commentId, request, user);
     }
 
     @PatchMapping("/{id}/comments/{commentId}")
@@ -116,8 +118,24 @@ public class PostController {
             @PathVariable Long id,
             @PathVariable Long commentId
     ) {
-        authService.authenticate(readBearerToken(authorization));
-        return postService.deleteComment(id, commentId);
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.deleteComment(id, commentId, user);
+    }
+
+    private AppUser resolveViewer(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+
+        String token = authorization.substring("Bearer ".length()).trim();
+        if (token.isEmpty()) return null;
+
+        try {
+            AuthToken authToken = authService.authenticateToken(token);
+            return authToken.isGuest() ? null : authToken.getUser();
+        } catch (ResponseStatusException ignored) {
+            return null;
+        }
     }
 
     private static String readBearerToken(String authorization) {

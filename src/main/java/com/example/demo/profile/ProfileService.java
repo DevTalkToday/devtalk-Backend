@@ -50,6 +50,17 @@ public class ProfileService {
     }
 
     @Transactional
+    public PublicProfileResponse getPublicProfile(Long userId) {
+        AppUser user = findPublicUser(userId);
+        return new PublicProfileResponse(
+                PublicProfileUserResponse.from(user),
+                postRepository.countByAuthor(user),
+                commentRepository.countByAuthor(user),
+                commentRepository.countAcceptedByAuthor(user)
+        );
+    }
+
+    @Transactional
     public UserResponse update(AppUser currentUser, ProfileUpdatePayload payload) {
         AppUser user = findUser(currentUser);
         user.updateProfile(
@@ -70,6 +81,16 @@ public class ProfileService {
     @Transactional
     public PostListResponse listPosts(AppUser currentUser, int page, int limit) {
         AppUser user = findUser(currentUser);
+        return listPostsForUser(user, page, limit);
+    }
+
+    @Transactional
+    public PostListResponse listPosts(Long userId, int page, int limit) {
+        AppUser user = findPublicUser(userId);
+        return listPostsForUser(user, page, limit);
+    }
+
+    private PostListResponse listPostsForUser(AppUser user, int page, int limit) {
         int safeLimit = safeLimit(limit);
         long totalCount = postRepository.countByAuthor(user);
         int totalPages = totalPages(totalCount, safeLimit);
@@ -94,6 +115,16 @@ public class ProfileService {
     @Transactional
     public ProfileCommentListResponse listComments(AppUser currentUser, int page, int limit) {
         AppUser user = findUser(currentUser);
+        return listCommentsForUser(user, page, limit);
+    }
+
+    @Transactional
+    public ProfileCommentListResponse listComments(Long userId, int page, int limit) {
+        AppUser user = findPublicUser(userId);
+        return listCommentsForUser(user, page, limit);
+    }
+
+    private ProfileCommentListResponse listCommentsForUser(AppUser user, int page, int limit) {
         int safeLimit = safeLimit(limit);
         long totalCount = commentRepository.countByAuthor(user);
         int totalPages = totalPages(totalCount, safeLimit);
@@ -118,6 +149,17 @@ public class ProfileService {
     private AppUser findUser(AppUser currentUser) {
         return userRepository.findById(currentUser.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Login is required"));
+    }
+
+    private AppUser findPublicUser(Long userId) {
+        AppUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND"));
+
+        if (!user.isProfileCompleted() || "__guest__".equalsIgnoreCase(user.getUsername())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND");
+        }
+
+        return user;
     }
 
     private ProfileCommentResponse toProfileCommentResponse(PostComment comment) {

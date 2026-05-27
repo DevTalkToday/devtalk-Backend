@@ -15,6 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PostService {
+    private static final String DEVTALK_BOT_USERNAME = "seed_writer";
+    private static final String DEVTALK_BOT_NICKNAME = "Devtalk";
+    private static final String DEVTALK_MANAGER_EMAIL = "s25002@gsm.hs.kr";
     private static final Set<String> CATEGORIES = Set.of("qna", "bug", "talk");
     private static final Set<String> SORTS = Set.of("latest", "oldest", "popular", "views", "comments");
     private static final Set<String> RESOLUTIONS = Set.of("all", "resolved", "unresolved");
@@ -83,10 +86,10 @@ public class PostService {
     }
 
     @Transactional
-    public PostResponse getPost(Long id, boolean track) {
+    public PostResponse getPost(Long id, boolean track, AppUser viewer) {
         Post post = findPost(id);
         if (track) post.incrementViewCount();
-        return toResponse(post);
+        return toResponse(post, viewer);
     }
 
     @Transactional
@@ -94,22 +97,22 @@ public class PostService {
         PostPayload payload = normalizePostPayload(request, null);
         Post post = new Post(payload.title(), payload.content(), payload.category(), author);
         post.apply(payload);
-        return toResponse(postRepository.save(post));
+        return toResponse(postRepository.save(post), author);
     }
 
     @Transactional
-    public PostResponse updatePost(Long id, PostPayload request) {
+    public PostResponse updatePost(Long id, PostPayload request, AppUser actor) {
         Post post = findPost(id);
+        requirePostManager(post, actor);
         post.apply(normalizePostPayload(request, post));
-        return toResponse(post);
+        return toResponse(post, actor);
     }
 
     @Transactional
-    public void deletePost(Long id) {
-        if (!postRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NOT_FOUND");
-        }
-        postRepository.deleteById(id);
+    public void deletePost(Long id, AppUser actor) {
+        Post post = findPost(id);
+        requirePostManager(post, actor);
+        postRepository.delete(post);
     }
 
     @Transactional
@@ -120,25 +123,29 @@ public class PostService {
         post.addComment(comment);
         commentRepository.save(comment);
         notificationService.createPostCommentNotification(post, comment);
-        return toResponse(post);
+        return toResponse(post, author);
     }
 
     @Transactional
-    public PostResponse updateComment(Long postId, Long commentId, CommentPayload request) {
+    public PostResponse updateComment(Long postId, Long commentId, CommentPayload request, AppUser actor) {
         PostComment comment = findComment(postId, commentId);
+        requireCommentAuthor(comment, actor);
         comment.updateBody(normalizeCommentBody(request == null ? null : request.body()));
-        return toResponse(findPost(postId));
+        return toResponse(findPost(postId), actor);
     }
 
     @Transactional
-    public PostResponse deleteComment(Long postId, Long commentId) {
+    public PostResponse deleteComment(Long postId, Long commentId, AppUser actor) {
         Post post = findPost(postId);
         PostComment comment = findComment(postId, commentId);
+        if (!canEditComment(actor, comment) && !canManagePost(actor, post)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_DELETE_FORBIDDEN");
+        }
         post.removeComment(comment);
         if (commentId.equals(post.getAcceptedCommentId())) {
             post.setAcceptedCommentId(null);
         }
-        return toResponse(post);
+        return toResponse(post, actor);
     }
 
     @Transactional
@@ -151,6 +158,7 @@ public class PostService {
         if (request == null || request.accepted() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "COMMENT_ACCEPTED_REQUIRED");
         }
+        requirePostManager(post, actor);
 
         if (request.accepted()) {
             post.setAcceptedCommentId(commentId);
@@ -158,7 +166,7 @@ public class PostService {
         } else {
             post.setAcceptedCommentId(null);
         }
-        return toResponse(post);
+        return toResponse(post, actor);
     }
 
     private Post findPost(Long id) {
@@ -292,7 +300,10 @@ public class PostService {
         return latest;
     }
 
-    private PostResponse toResponse(Post post) {
+    private PostResponse toResponse(Post post, AppUser viewer) {
+        boolean canManagePost = canManagePost(viewer, post);
+        boolean canAcceptComments = canManagePost && !"talk".equals(post.getCategory());
+
         return new PostResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
@@ -308,9 +319,12 @@ public class PostService {
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
-                post.getComments().stream().map(comment -> toCommentResponse(comment, post.getAcceptedCommentId())).toList(),
+                post.getComments().stream().map(comment -> toCommentResponse(comment, post, viewer, canAcceptComments)).toList(),
                 toQuestionResponse(post),
-                toBugResponse(post)
+                toBugResponse(post),
+                canManagePost,
+                canManagePost,
+                canAcceptComments
         );
     }
 
@@ -334,7 +348,8 @@ public class PostService {
         );
     }
 
-    private PostCommentResponse toCommentResponse(PostComment comment, Long acceptedCommentId) {
+    private PostCommentResponse toCommentResponse(PostComment comment, Post post, AppUser viewer, boolean canAcceptComments) {
+        boolean canEdit = canEditComment(viewer, comment);
         return new PostCommentResponse(
                 String.valueOf(comment.getId()),
                 toAuthorResponse(comment.getAuthor()),
@@ -342,7 +357,10 @@ public class PostService {
                 comment.getCreatedAt(),
                 comment.getUpdatedAt(),
                 comment.getLikeCount(),
-                acceptedCommentId != null && acceptedCommentId.equals(comment.getId())
+                post.getAcceptedCommentId() != null && post.getAcceptedCommentId().equals(comment.getId()),
+                canEdit,
+                canEdit || canManagePost(viewer, post),
+                canAcceptComments
         );
     }
 
@@ -430,5 +448,42 @@ public class PostService {
 
     private static String nullToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private void requirePostManager(Post post, AppUser actor) {
+        if (!canManagePost(actor, post)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "POST_MODIFY_FORBIDDEN");
+        }
+    }
+
+    private void requireCommentAuthor(PostComment comment, AppUser actor) {
+        if (!canEditComment(actor, comment)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_MODIFY_FORBIDDEN");
+        }
+    }
+
+    private static boolean canManagePost(AppUser actor, Post post) {
+        if (actor == null || post == null || post.getAuthor() == null) return false;
+        if (post.getAuthor().getId().equals(actor.getId())) return true;
+        return isDevtalkBotPost(post) && isDevtalkManager(actor);
+    }
+
+    private static boolean canEditComment(AppUser actor, PostComment comment) {
+        return actor != null
+                && comment != null
+                && comment.getAuthor() != null
+                && comment.getAuthor().getId().equals(actor.getId());
+    }
+
+    private static boolean isDevtalkBotPost(Post post) {
+        AppUser author = post.getAuthor();
+        if (author == null) return false;
+        return DEVTALK_BOT_USERNAME.equalsIgnoreCase(nullToBlank(author.getUsername()))
+                || DEVTALK_BOT_NICKNAME.equalsIgnoreCase(nullToBlank(author.getNickname()));
+    }
+
+    private static boolean isDevtalkManager(AppUser actor) {
+        return DEVTALK_MANAGER_EMAIL.equalsIgnoreCase(nullToBlank(actor.getUsername()))
+                || DEVTALK_MANAGER_EMAIL.equalsIgnoreCase(nullToBlank(actor.getEmail()));
     }
 }

@@ -9,6 +9,9 @@ public record PostCommentResponse(
         Instant createdAt,
         Instant updatedAt,
         int likeCount,
-        boolean isAccepted
+        boolean isAccepted,
+        boolean canEdit,
+        boolean canDelete,
+        boolean canAccept
 ) {
 }

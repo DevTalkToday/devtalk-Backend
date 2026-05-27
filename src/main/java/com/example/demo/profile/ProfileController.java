@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +31,11 @@ public class ProfileController {
     public ProfileResponse me(@RequestHeader(name = "Authorization", required = false) String authorization) {
         AppUser user = authService.authenticate(readBearerToken(authorization));
         return profileService.getMe(user);
+    }
+
+    @GetMapping("/{id}")
+    public PublicProfileResponse publicProfile(@PathVariable Long id) {
+        return profileService.getPublicProfile(id);
     }
 
     @PatchMapping("/me")
@@ -60,6 +66,15 @@ public class ProfileController {
         return profileService.listPosts(user, page, limit);
     }
 
+    @GetMapping("/{id}/posts")
+    public PostListResponse publicPosts(
+            @PathVariable Long id,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "limit", defaultValue = "24") int limit
+    ) {
+        return profileService.listPosts(id, page, limit);
+    }
+
     @GetMapping("/me/comments")
     public ProfileCommentListResponse comments(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -68,6 +83,15 @@ public class ProfileController {
     ) {
         AppUser user = authService.authenticate(readBearerToken(authorization));
         return profileService.listComments(user, page, limit);
+    }
+
+    @GetMapping("/{id}/comments")
+    public ProfileCommentListResponse publicComments(
+            @PathVariable Long id,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "limit", defaultValue = "24") int limit
+    ) {
+        return profileService.listComments(id, page, limit);
     }
 
     private static String readBearerToken(String authorization) {
