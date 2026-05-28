@@ -34,4 +34,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findUnreadFrom(@Param("sender") AppUser sender, @Param("recipient") AppUser recipient);
 
     long countBySenderAndRecipientAndReadAtIsNull(AppUser sender, AppUser recipient);
+
+    void deleteBySenderOrRecipient(AppUser sender, AppUser recipient);
 }

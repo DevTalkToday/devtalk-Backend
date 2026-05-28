@@ -1,5 +1,6 @@
 package com.example.demo.post;
 
+import com.example.demo.auth.AdminAccess;
 import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
 import jakarta.transaction.Transactional;
@@ -111,7 +112,7 @@ public class PostService {
     @Transactional
     public void deletePost(Long id, AppUser actor) {
         Post post = findPost(id);
-        requirePostManager(post, actor);
+        requirePostDeleter(post, actor);
         postRepository.delete(post);
     }
 
@@ -138,7 +139,7 @@ public class PostService {
     public PostResponse deleteComment(Long postId, Long commentId, AppUser actor) {
         Post post = findPost(postId);
         PostComment comment = findComment(postId, commentId);
-        if (!canEditComment(actor, comment) && !canManagePost(actor, post)) {
+        if (!canDeleteComment(actor, comment, post)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_DELETE_FORBIDDEN");
         }
         post.removeComment(comment);
@@ -302,6 +303,7 @@ public class PostService {
 
     private PostResponse toResponse(Post post, AppUser viewer) {
         boolean canManagePost = canManagePost(viewer, post);
+        boolean canDeletePost = canManagePost || AdminAccess.isAdmin(viewer);
         boolean canAcceptComments = canManagePost && !"talk".equals(post.getCategory());
 
         return new PostResponse(
@@ -323,7 +325,7 @@ public class PostService {
                 toQuestionResponse(post),
                 toBugResponse(post),
                 canManagePost,
-                canManagePost,
+                canDeletePost,
                 canAcceptComments
         );
     }
@@ -359,7 +361,7 @@ public class PostService {
                 comment.getLikeCount(),
                 post.getAcceptedCommentId() != null && post.getAcceptedCommentId().equals(comment.getId()),
                 canEdit,
-                canEdit || canManagePost(viewer, post),
+                canDeleteComment(viewer, comment, post),
                 canAcceptComments
         );
     }
@@ -456,6 +458,12 @@ public class PostService {
         }
     }
 
+    private void requirePostDeleter(Post post, AppUser actor) {
+        if (!canManagePost(actor, post) && !AdminAccess.isAdmin(actor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "POST_MODIFY_FORBIDDEN");
+        }
+    }
+
     private void requireCommentAuthor(PostComment comment, AppUser actor) {
         if (!canEditComment(actor, comment)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_MODIFY_FORBIDDEN");
@@ -473,6 +481,10 @@ public class PostService {
                 && comment != null
                 && comment.getAuthor() != null
                 && comment.getAuthor().getId().equals(actor.getId());
+    }
+
+    private static boolean canDeleteComment(AppUser actor, PostComment comment, Post post) {
+        return canEditComment(actor, comment) || canManagePost(actor, post) || AdminAccess.isAdmin(actor);
     }
 
     private static boolean isDevtalkBotPost(Post post) {

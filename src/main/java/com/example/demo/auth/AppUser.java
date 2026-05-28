@@ -129,4 +129,8 @@ public class AppUser {
     public void updateAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
     }
+
+    public void updatePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
 }

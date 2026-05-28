@@ -3,6 +3,8 @@ package com.example.demo.notification;
 import com.example.demo.auth.AppUser;
 import com.example.demo.post.Post;
 import com.example.demo.post.PostComment;
+import com.example.demo.settings.NotificationPreference;
+import com.example.demo.settings.NotificationPreferenceRepository;
 import jakarta.transaction.Transactional;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
@@ -16,9 +18,14 @@ public class NotificationService {
     private static final int MAX_LIMIT = 100;
 
     private final NotificationRepository notificationRepository;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
 
-    public NotificationService(NotificationRepository notificationRepository) {
+    public NotificationService(
+            NotificationRepository notificationRepository,
+            NotificationPreferenceRepository notificationPreferenceRepository
+    ) {
         this.notificationRepository = notificationRepository;
+        this.notificationPreferenceRepository = notificationPreferenceRepository;
     }
 
     @Transactional
@@ -148,6 +155,10 @@ public class NotificationService {
             String targetId,
             String targetUrl
     ) {
+        if (!isNotificationEnabled(recipient, type)) {
+            return;
+        }
+
         notificationRepository.save(new Notification(
                 recipient,
                 actor,
@@ -159,6 +170,15 @@ public class NotificationService {
                 clampNullable(targetId, 80),
                 clampNullable(targetUrl, 240)
         ));
+    }
+
+    private boolean isNotificationEnabled(AppUser recipient, NotificationType type) {
+        if (type == NotificationType.ADMIN_NOTICE) {
+            return true;
+        }
+        return notificationPreferenceRepository.findByUserAndType(recipient, type)
+                .map(NotificationPreference::isEnabled)
+                .orElse(true);
     }
 
     private static int normalizeLimit(int limit) {

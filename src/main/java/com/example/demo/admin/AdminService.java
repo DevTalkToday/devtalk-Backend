@@ -1,0 +1,135 @@
+package com.example.demo.admin;
+
+import com.example.demo.auth.AdminAccess;
+import com.example.demo.auth.AppUser;
+import com.example.demo.auth.AuthTokenRepository;
+import com.example.demo.auth.OAuthAccountRepository;
+import com.example.demo.auth.UserRepository;
+import com.example.demo.friend.FriendshipRepository;
+import com.example.demo.message.MessageRepository;
+import com.example.demo.notification.NotificationRepository;
+import com.example.demo.post.Post;
+import com.example.demo.post.PostComment;
+import com.example.demo.post.PostCommentRepository;
+import com.example.demo.post.PostRepository;
+import com.example.demo.report.ReportRepository;
+import com.example.demo.settings.NotificationPreferenceRepository;
+import jakarta.transaction.Transactional;
+import java.util.Comparator;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class AdminService {
+    private static final String GUEST_USERNAME = "__guest__";
+
+    private final UserRepository userRepository;
+    private final PostRepository postRepository;
+    private final PostCommentRepository commentRepository;
+    private final AuthTokenRepository authTokenRepository;
+    private final OAuthAccountRepository oAuthAccountRepository;
+    private final FriendshipRepository friendshipRepository;
+    private final MessageRepository messageRepository;
+    private final NotificationRepository notificationRepository;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
+    private final ReportRepository reportRepository;
+
+    public AdminService(
+            UserRepository userRepository,
+            PostRepository postRepository,
+            PostCommentRepository commentRepository,
+            AuthTokenRepository authTokenRepository,
+            OAuthAccountRepository oAuthAccountRepository,
+            FriendshipRepository friendshipRepository,
+            MessageRepository messageRepository,
+            NotificationRepository notificationRepository,
+            NotificationPreferenceRepository notificationPreferenceRepository,
+            ReportRepository reportRepository
+    ) {
+        this.userRepository = userRepository;
+        this.postRepository = postRepository;
+        this.commentRepository = commentRepository;
+        this.authTokenRepository = authTokenRepository;
+        this.oAuthAccountRepository = oAuthAccountRepository;
+        this.friendshipRepository = friendshipRepository;
+        this.messageRepository = messageRepository;
+        this.notificationRepository = notificationRepository;
+        this.notificationPreferenceRepository = notificationPreferenceRepository;
+        this.reportRepository = reportRepository;
+    }
+
+    @Transactional
+    public List<AdminUserResponse> listUsers(AppUser actor) {
+        AdminAccess.requireAdmin(actor);
+
+        return userRepository.findAll()
+                .stream()
+                .filter(user -> !GUEST_USERNAME.equalsIgnoreCase(user.getUsername()))
+                .sorted(Comparator.comparing(AppUser::getCreatedAt).reversed())
+                .map(user -> AdminUserResponse.from(
+                        user,
+                        postRepository.countByAuthor(user),
+                        commentRepository.countByAuthor(user)
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public UserDeleteResponse deleteUser(AppUser actor, Long userId) {
+        AdminAccess.requireAdmin(actor);
+
+        AppUser target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND"));
+
+        if (actor.getId().equals(target.getId()) || AdminAccess.isAdmin(target)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN_USER_DELETE_FORBIDDEN");
+        }
+        if (GUEST_USERNAME.equalsIgnoreCase(target.getUsername())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "GUEST_USER_DELETE_FORBIDDEN");
+        }
+
+        deleteUserReports(target);
+        deleteUserComments(target);
+        deleteUserPosts(target);
+
+        authTokenRepository.deleteByUser(target);
+        oAuthAccountRepository.deleteByUser(target);
+        notificationPreferenceRepository.deleteByUser(target);
+        notificationRepository.deleteByRecipientOrActor(target, target);
+        messageRepository.deleteBySenderOrRecipient(target, target);
+        friendshipRepository.deleteByRequesterOrAddressee(target, target);
+
+        userRepository.delete(target);
+        return new UserDeleteResponse(userId, "deleted");
+    }
+
+    private void deleteUserComments(AppUser target) {
+        List<PostComment> comments = commentRepository.findByAuthor(target);
+        for (PostComment comment : comments) {
+            Post post = comment.getPost();
+            reportRepository.deleteByTargetTypeAndTargetId("comment", String.valueOf(comment.getId()));
+            if (post.getAcceptedCommentId() != null && post.getAcceptedCommentId().equals(comment.getId())) {
+                post.setAcceptedCommentId(null);
+            }
+            post.removeComment(comment);
+        }
+    }
+
+    private void deleteUserPosts(AppUser target) {
+        List<Post> posts = postRepository.findByAuthor(target);
+        for (Post post : posts) {
+            reportRepository.deleteByTargetTypeAndTargetId("post", String.valueOf(post.getId()));
+            for (PostComment comment : List.copyOf(post.getComments())) {
+                reportRepository.deleteByTargetTypeAndTargetId("comment", String.valueOf(comment.getId()));
+            }
+        }
+        postRepository.deleteAll(posts);
+    }
+
+    private void deleteUserReports(AppUser target) {
+        reportRepository.deleteByReporterId(target.getId());
+        reportRepository.deleteByTargetTypeAndTargetId("profile", String.valueOf(target.getId()));
+    }
+}

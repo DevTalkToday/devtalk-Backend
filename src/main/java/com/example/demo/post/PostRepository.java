@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
+    List<Post> findByAuthor(AppUser author);
+
     List<Post> findByAuthorOrderByCreatedAtDesc(AppUser author, Pageable pageable);
 
     long countByAuthor(AppUser author);

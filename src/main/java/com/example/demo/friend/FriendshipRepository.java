@@ -44,4 +44,6 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
                or (f.requester = :second and f.addressee = :first)
             """)
     Optional<Friendship> findBetween(@Param("first") AppUser first, @Param("second") AppUser second);
+
+    void deleteByRequesterOrAddressee(AppUser requester, AppUser addressee);
 }

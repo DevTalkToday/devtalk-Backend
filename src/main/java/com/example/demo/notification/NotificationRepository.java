@@ -28,4 +28,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     List<Notification> findByRecipientAndReadAtIsNull(AppUser recipient);
 
     long countByRecipientAndReadAtIsNull(AppUser recipient);
+
+    void deleteByRecipientOrActor(AppUser recipient, AppUser actor);
 }

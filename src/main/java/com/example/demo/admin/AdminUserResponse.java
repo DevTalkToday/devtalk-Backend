@@ -1,34 +1,34 @@
-package com.example.demo.auth.dto;
+package com.example.demo.admin;
 
-import com.example.demo.auth.AppUser;
 import com.example.demo.auth.AdminAccess;
+import com.example.demo.auth.AppUser;
 import java.time.Instant;
 import java.util.List;
 
-public record UserResponse(
+public record AdminUserResponse(
         Long id,
         String username,
         String nickname,
         String email,
-        String description,
-        String avatarUrl,
         boolean profileCompleted,
+        boolean admin,
         List<String> majors,
-        Instant createdAt,
-        boolean admin
+        long postCount,
+        long commentCount,
+        Instant createdAt
 ) {
-    public static UserResponse from(AppUser user) {
-        return new UserResponse(
+    public static AdminUserResponse from(AppUser user, long postCount, long commentCount) {
+        return new AdminUserResponse(
                 user.getId(),
                 user.getUsername(),
                 user.getNickname(),
                 user.getEmail(),
-                user.getDescription(),
-                user.getAvatarUrl(),
                 user.isProfileCompleted(),
+                AdminAccess.isAdmin(user),
                 user.getMajors(),
-                user.getCreatedAt(),
-                AdminAccess.isAdmin(user)
+                postCount,
+                commentCount,
+                user.getCreatedAt()
         );
     }
 }

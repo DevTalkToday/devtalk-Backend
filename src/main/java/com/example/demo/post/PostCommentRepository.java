@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 public interface PostCommentRepository extends JpaRepository<PostComment, Long> {
     Optional<PostComment> findByIdAndPostId(Long id, Long postId);
 
+    List<PostComment> findByAuthor(AppUser author);
+
     List<PostComment> findByAuthorOrderByCreatedAtDesc(AppUser author, Pageable pageable);
 
     long countByAuthor(AppUser author);
