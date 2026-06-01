@@ -12,15 +12,16 @@ import com.example.demo.post.PostListResponse;
 import com.example.demo.post.PostRepository;
 import com.example.demo.post.PostSummaryResponse;
 import com.example.demo.post.QuestionResponse;
-import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Transactional(readOnly = true)
 public class ProfileService {
     private static final int MAX_PROFILE_ITEMS = 48;
 
@@ -38,7 +39,7 @@ public class ProfileService {
         this.commentRepository = commentRepository;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public ProfileResponse getMe(AppUser currentUser) {
         AppUser user = findUser(currentUser);
         return new ProfileResponse(
@@ -49,7 +50,7 @@ public class ProfileService {
         );
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PublicProfileResponse getPublicProfile(Long userId) {
         AppUser user = findPublicUser(userId);
         return new PublicProfileResponse(
@@ -78,13 +79,13 @@ public class ProfileService {
         return UserResponse.from(user);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PostListResponse listPosts(AppUser currentUser, int page, int limit) {
         AppUser user = findUser(currentUser);
         return listPostsForUser(user, page, limit);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PostListResponse listPosts(Long userId, int page, int limit) {
         AppUser user = findPublicUser(userId);
         return listPostsForUser(user, page, limit);
@@ -112,13 +113,13 @@ public class ProfileService {
         ));
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public ProfileCommentListResponse listComments(AppUser currentUser, int page, int limit) {
         AppUser user = findUser(currentUser);
         return listCommentsForUser(user, page, limit);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public ProfileCommentListResponse listComments(Long userId, int page, int limit) {
         AppUser user = findPublicUser(userId);
         return listCommentsForUser(user, page, limit);

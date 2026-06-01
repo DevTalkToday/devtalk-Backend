@@ -45,5 +45,17 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
             """)
     Optional<Friendship> findBetween(@Param("first") AppUser first, @Param("second") AppUser second);
 
+    @Query("""
+            select f from Friendship f
+            join fetch f.requester
+            join fetch f.addressee
+            where (f.requester = :currentUser and f.addressee in :users)
+               or (f.addressee = :currentUser and f.requester in :users)
+            """)
+    List<Friendship> findBetweenUserAndCandidates(
+            @Param("currentUser") AppUser currentUser,
+            @Param("users") List<AppUser> users
+    );
+
     void deleteByRequesterOrAddressee(AppUser requester, AppUser addressee);
 }

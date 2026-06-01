@@ -17,6 +17,14 @@ public interface PostCommentRepository extends JpaRepository<PostComment, Long> 
 
     long countByAuthor(AppUser author);
 
+    @Query("""
+            select c.author.id, count(c)
+            from PostComment c
+            where c.author.id in :authorIds
+            group by c.author.id
+            """)
+    List<Object[]> countByAuthorIds(@Param("authorIds") List<Long> authorIds);
+
     @Query("select count(c) from PostComment c where c.author = :author and c.post.acceptedCommentId = c.id")
     long countAcceptedByAuthor(@Param("author") AppUser author);
 }

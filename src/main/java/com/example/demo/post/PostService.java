@@ -3,22 +3,30 @@ package com.example.demo.post;
 import com.example.demo.auth.AdminAccess;
 import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
-import jakarta.transaction.Transactional;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Transactional(readOnly = true)
 public class PostService {
     private static final String DEVTALK_BOT_USERNAME = "seed_writer";
     private static final String DEVTALK_BOT_NICKNAME = "Devtalk";
     private static final String DEVTALK_MANAGER_EMAIL = "s25002@gsm.hs.kr";
+    private static final String EMPTY_CATEGORY_SENTINEL = "__none__";
+    private static final String RESOLUTION_MODE_ALL = "ALL";
+    private static final String RESOLUTION_MODE_RESOLVED = "RESOLVED";
+    private static final String RESOLUTION_MODE_UNRESOLVED = "UNRESOLVED";
+    private static final String RESOLUTION_MODE_ANY_STATUS = "ANY_STATUS";
     private static final Set<String> CATEGORIES = Set.of("qna", "bug", "talk");
     private static final Set<String> SORTS = Set.of("latest", "oldest", "popular", "views", "comments");
     private static final Set<String> RESOLUTIONS = Set.of("all", "resolved", "unresolved");
@@ -52,21 +60,25 @@ public class PostService {
                 .map(value -> value.toLowerCase(Locale.ROOT))
                 .filter(CATEGORIES::contains)
                 .toList();
-        List<String> resolutions = parseCsv(resolution == null ? "all" : resolution).stream()
+        List<String> resolutions = normalizeResolutions(parseCsv(resolution == null ? "all" : resolution).stream()
                 .map(value -> value.toLowerCase(Locale.ROOT))
                 .filter(RESOLUTIONS::contains)
-                .toList();
+                .toList());
         String safeSort = SORTS.contains(normalizeLower(sort)) ? normalizeLower(sort) : "latest";
         String safeMatch = "or".equals(normalizeLower(match)) ? "or" : "and";
         List<String> keywords = parseKeywords(q);
+        int safeLimit = Math.min(Math.max(limit, 1), 24);
 
-        List<Post> filtered = postRepository.findAll().stream()
+        if (canUseDatabaseListing(categories, resolutions, keywords, safeSort, safeMatch)) {
+            return listPostsFromRepository(categories, resolutions, safeSort, page, safeLimit);
+        }
+
+        List<Post> filtered = loadPostsForInMemoryFiltering(categories, resolutions, safeMatch).stream()
                 .filter(post -> matchesCategoryAndResolution(post, categories, resolutions, safeMatch))
                 .filter(post -> matchesKeywords(post, keywords, safeMatch))
                 .sorted(comparatorFor(safeSort))
                 .toList();
 
-        int safeLimit = Math.min(Math.max(limit, 1), 24);
         int totalCount = filtered.size();
         int totalPages = Math.max((int) Math.ceil(totalCount / (double) safeLimit), 1);
         int safePage = Math.min(Math.max(page, 1), totalPages);
@@ -268,28 +280,6 @@ public class PostService {
         return null;
     }
 
-    private boolean matchesKeywords(Post post, List<String> keywords, String match) {
-        if (keywords.isEmpty()) return true;
-        String haystack = String.join(" ", List.of(
-                post.getTitle(),
-                createExcerpt(post.getContent()),
-                post.getContent(),
-                String.join(" ", post.getTags()),
-                String.join(" ", post.getMajors()),
-                nullToBlank(post.getQuestionEnvironment()),
-                nullToBlank(post.getQuestionTried()),
-                nullToBlank(post.getBugEnvironment()),
-                nullToBlank(post.getBugExpected()),
-                nullToBlank(post.getBugActual()),
-                String.join(" ", post.getBugLabels()),
-                post.getComments().stream().map(PostComment::getBody).reduce("", (left, right) -> left + " " + right)
-        )).toLowerCase(Locale.ROOT);
-
-        return "or".equals(match)
-                ? keywords.stream().anyMatch(haystack::contains)
-                : keywords.stream().allMatch(haystack::contains);
-    }
-
     private Comparator<Post> comparatorFor(String sort) {
         Comparator<Post> latest = Comparator
                 .comparing(Post::getCreatedAt, Comparator.reverseOrder())
@@ -397,6 +387,53 @@ public class PostService {
         );
     }
 
+    private PostListResponse listPostsFromRepository(
+            List<String> categories,
+            List<String> resolutions,
+            String sort,
+            int page,
+            int limit
+    ) {
+        Page<Post> pageResult = postRepository.findListingPage(
+                listingCategories(categories),
+                categories.isEmpty(),
+                resolutionMode(resolutions),
+                PageRequest.of(Math.max(page - 1, 0), limit, repositorySort(sort))
+        );
+
+        int totalPages = Math.max(pageResult.getTotalPages(), 1);
+        int safePage = Math.min(Math.max(page, 1), totalPages);
+        if (safePage != pageResult.getNumber() + 1 && pageResult.getTotalElements() > 0) {
+            pageResult = postRepository.findListingPage(
+                    listingCategories(categories),
+                    categories.isEmpty(),
+                    resolutionMode(resolutions),
+                    PageRequest.of(safePage - 1, limit, repositorySort(sort))
+            );
+        }
+
+        return new PostListResponse(
+                pageResult.getContent().stream().map(this::toSummaryResponse).toList(),
+                new PostListResponse.PageInfo(
+                        safePage,
+                        limit,
+                        Math.toIntExact(pageResult.getTotalElements()),
+                        totalPages,
+                        safePage < totalPages,
+                        safePage > 1
+                )
+        );
+    }
+
+    private List<Post> loadPostsForInMemoryFiltering(List<String> categories, List<String> resolutions, String match) {
+        boolean hasCategoryFilter = !categories.isEmpty();
+        boolean hasResolutionFilter = hasActiveResolutionFilter(resolutions);
+        if ("or".equals(match) && hasCategoryFilter && hasResolutionFilter) {
+            return postRepository.findAll();
+        }
+        return postRepository.findAllForListing(listingCategories(categories), categories.isEmpty(), resolutionMode(resolutions));
+    }
+
     private static List<String> parseCsv(String value) {
         if (value == null || value.isBlank()) return List.of();
         List<String> items = new ArrayList<>();
@@ -426,9 +463,81 @@ public class PostService {
                 .toList();
     }
 
+    private static List<String> normalizeResolutions(List<String> values) {
+        if (values.size() <= 1 || !values.contains("all")) {
+            return values;
+        }
+        return values.stream()
+                .filter(value -> !"all".equals(value))
+                .toList();
+    }
+
     private static String createExcerpt(String content) {
         String normalized = trim(content).replaceAll("\\s+", " ");
         return normalized.length() > 150 ? normalized.substring(0, 150) : normalized;
+    }
+
+    private static boolean canUseDatabaseListing(
+            List<String> categories,
+            List<String> resolutions,
+            List<String> keywords,
+            String sort,
+            String match
+    ) {
+        if (!keywords.isEmpty()) return false;
+        if ("comments".equals(sort)) return false;
+
+        boolean hasCategoryFilter = !categories.isEmpty();
+        boolean hasResolutionFilter = hasActiveResolutionFilter(resolutions);
+        return !"or".equals(match) || !hasCategoryFilter || !hasResolutionFilter;
+    }
+
+    private static boolean hasActiveResolutionFilter(List<String> resolutions) {
+        return !resolutions.isEmpty() && !resolutions.contains("all");
+    }
+
+    private static List<String> listingCategories(List<String> categories) {
+        return categories.isEmpty() ? List.of(EMPTY_CATEGORY_SENTINEL) : categories;
+    }
+
+    private static String resolutionMode(List<String> resolutions) {
+        boolean resolved = resolutions.contains("resolved");
+        boolean unresolved = resolutions.contains("unresolved");
+        if (resolved && unresolved) return RESOLUTION_MODE_ANY_STATUS;
+        if (resolved) return RESOLUTION_MODE_RESOLVED;
+        if (unresolved) return RESOLUTION_MODE_UNRESOLVED;
+        return RESOLUTION_MODE_ALL;
+    }
+
+    private static Sort repositorySort(String sort) {
+        if ("oldest".equals(sort)) {
+            return Sort.by(
+                    Sort.Order.asc("createdAt"),
+                    Sort.Order.asc("updatedAt"),
+                    Sort.Order.asc("id")
+            );
+        }
+        if ("popular".equals(sort)) {
+            return Sort.by(
+                    Sort.Order.desc("likeCount"),
+                    Sort.Order.desc("createdAt"),
+                    Sort.Order.desc("updatedAt"),
+                    Sort.Order.desc("id")
+            );
+        }
+        if ("views".equals(sort)) {
+            return Sort.by(
+                    Sort.Order.desc("viewCount"),
+                    Sort.Order.desc("createdAt"),
+                    Sort.Order.desc("updatedAt"),
+                    Sort.Order.desc("id")
+            );
+        }
+        return Sort.by(
+                Sort.Order.desc("createdAt"),
+                Sort.Order.desc("updatedAt"),
+                Sort.Order.desc("id")
+        );
     }
 
     private static String normalizeLower(String value) {
@@ -450,6 +559,47 @@ public class PostService {
 
     private static String nullToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private boolean matchesKeywords(Post post, List<String> keywords, String match) {
+        if (keywords.isEmpty()) return true;
+        String haystack = buildSearchableText(post).toLowerCase(Locale.ROOT);
+
+        return "or".equals(match)
+                ? keywords.stream().anyMatch(haystack::contains)
+                : keywords.stream().allMatch(haystack::contains);
+    }
+
+    private static String buildSearchableText(Post post) {
+        StringBuilder builder = new StringBuilder();
+        appendSearchValue(builder, post.getTitle());
+        appendSearchValue(builder, createExcerpt(post.getContent()));
+        appendSearchValue(builder, post.getContent());
+        appendSearchValues(builder, post.getTags());
+        appendSearchValues(builder, post.getMajors());
+        appendSearchValue(builder, post.getQuestionEnvironment());
+        appendSearchValue(builder, post.getQuestionTried());
+        appendSearchValue(builder, post.getBugEnvironment());
+        appendSearchValue(builder, post.getBugExpected());
+        appendSearchValue(builder, post.getBugActual());
+        appendSearchValues(builder, post.getBugLabels());
+        for (PostComment comment : post.getComments()) {
+            appendSearchValue(builder, comment.getBody());
+        }
+        return builder.toString();
+    }
+
+    private static void appendSearchValues(StringBuilder builder, List<String> values) {
+        for (String value : values) {
+            appendSearchValue(builder, value);
+        }
+    }
+
+    private static void appendSearchValue(StringBuilder builder, String value) {
+        String normalized = nullToBlank(value);
+        if (normalized.isBlank()) return;
+        if (builder.length() > 0) builder.append(' ');
+        builder.append(normalized);
     }
 
     private void requirePostManager(Post post, AppUser actor) {

@@ -5,18 +5,23 @@ import com.example.demo.auth.UserRepository;
 import com.example.demo.friend.Friendship;
 import com.example.demo.friend.FriendshipRepository;
 import com.example.demo.friend.FriendshipStatus;
-import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Transactional(readOnly = true)
 public class MessageService {
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 100;
@@ -36,18 +41,40 @@ public class MessageService {
         this.friendshipRepository = friendshipRepository;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<ConversationResponse> listConversations(AppUser currentUser) {
-        return friendshipRepository.findByUserAndStatus(currentUser, FriendshipStatus.ACCEPTED)
+        List<AppUser> peers = friendshipRepository.findByUserAndStatus(currentUser, FriendshipStatus.ACCEPTED)
                 .stream()
-                .map(friendship -> toConversationResponse(currentUser, peerOf(friendship, currentUser)))
+                .map(friendship -> peerOf(friendship, currentUser))
+                .toList();
+        if (peers.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Message> latestMessages = messageRepository.findLatestMessagesForPeers(currentUser, peers)
+                .stream()
+                .collect(Collectors.toMap(
+                        message -> peerIdOf(message, currentUser),
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<Long, Integer> unreadCounts = messageRepository.countUnreadBySenders(peers, currentUser)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> ((Number) row[1]).intValue()
+                ));
+
+        return peers.stream()
+                .map(peer -> toConversationResponse(currentUser, peer, latestMessages.get(peer.getId()), unreadCounts.getOrDefault(peer.getId(), 0)))
                 .sorted(Comparator
                         .comparing(MessageService::lastMessageCreatedAt, Comparator.reverseOrder())
                         .thenComparing(response -> response.user().nickname(), String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<MessageResponse> getConversation(AppUser currentUser, Long userId, int limit) {
         AppUser peer = findUser(userId);
         ensureCanMessage(currentUser, peer);
@@ -91,16 +118,11 @@ public class MessageService {
         return new MessageReadResponse(peer.getId(), unread.size());
     }
 
-    private ConversationResponse toConversationResponse(AppUser currentUser, AppUser peer) {
-        Message latest = messageRepository.findConversation(currentUser, peer, PageRequest.of(0, 1))
-                .stream()
-                .findFirst()
-                .orElse(null);
-
+    private ConversationResponse toConversationResponse(AppUser currentUser, AppUser peer, Message latest, int unreadCount) {
         return new ConversationResponse(
                 MessageUserResponse.from(peer),
                 latest == null ? null : toMessageResponse(latest, currentUser),
-                messageRepository.countBySenderAndRecipientAndReadAtIsNull(peer, currentUser)
+                unreadCount
         );
     }
 
@@ -134,6 +156,12 @@ public class MessageService {
         return friendship.getRequester().getId().equals(currentUser.getId())
                 ? friendship.getAddressee()
                 : friendship.getRequester();
+    }
+
+    private static Long peerIdOf(Message message, AppUser currentUser) {
+        return message.getSender().getId().equals(currentUser.getId())
+                ? message.getRecipient().getId()
+                : message.getSender().getId();
     }
 
     private static int normalizeLimit(int limit) {

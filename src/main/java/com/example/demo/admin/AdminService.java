@@ -14,14 +14,17 @@ import com.example.demo.post.PostCommentRepository;
 import com.example.demo.post.PostRepository;
 import com.example.demo.report.ReportRepository;
 import com.example.demo.settings.NotificationPreferenceRepository;
-import jakarta.transaction.Transactional;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Transactional(readOnly = true)
 public class AdminService {
     private static final String GUEST_USERNAME = "__guest__";
 
@@ -60,18 +63,28 @@ public class AdminService {
         this.reportRepository = reportRepository;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<AdminUserResponse> listUsers(AppUser actor) {
         AdminAccess.requireAdmin(actor);
 
-        return userRepository.findAll()
+        List<AppUser> users = userRepository.findAll()
                 .stream()
                 .filter(user -> !GUEST_USERNAME.equalsIgnoreCase(user.getUsername()))
                 .sorted(Comparator.comparing(AppUser::getCreatedAt).reversed())
+                .toList();
+        if (users.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> userIds = users.stream().map(AppUser::getId).toList();
+        Map<Long, Long> postCounts = toCountMap(postRepository.countByAuthorIds(userIds));
+        Map<Long, Long> commentCounts = toCountMap(commentRepository.countByAuthorIds(userIds));
+
+        return users.stream()
                 .map(user -> AdminUserResponse.from(
                         user,
-                        postRepository.countByAuthor(user),
-                        commentRepository.countByAuthor(user)
+                        postCounts.getOrDefault(user.getId(), 0L),
+                        commentCounts.getOrDefault(user.getId(), 0L)
                 ))
                 .toList();
     }
@@ -131,5 +144,12 @@ public class AdminService {
     private void deleteUserReports(AppUser target) {
         reportRepository.deleteByReporterId(target.getId());
         reportRepository.deleteByTargetTypeAndTargetId("profile", String.valueOf(target.getId()));
+    }
+
+    private static Map<Long, Long> toCountMap(List<Object[]> rows) {
+        return rows.stream().collect(Collectors.toMap(
+                row -> ((Number) row[0]).longValue(),
+                row -> ((Number) row[1]).longValue()
+        ));
     }
 }

@@ -35,5 +35,40 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     long countBySenderAndRecipientAndReadAtIsNull(AppUser sender, AppUser recipient);
 
+    @Query("""
+            select m from Message m
+            join fetch m.sender
+            join fetch m.recipient
+            where ((m.sender = :currentUser and m.recipient in :peers)
+                or (m.sender in :peers and m.recipient = :currentUser))
+              and m.id in (
+                    select max(candidate.id) from Message candidate
+                    where ((candidate.sender = :currentUser and candidate.recipient in :peers)
+                        or (candidate.sender in :peers and candidate.recipient = :currentUser))
+                    group by case
+                        when candidate.sender = :currentUser then candidate.recipient.id
+                        else candidate.sender.id
+                    end
+              )
+            order by m.createdAt desc, m.id desc
+            """)
+    List<Message> findLatestMessagesForPeers(
+            @Param("currentUser") AppUser currentUser,
+            @Param("peers") List<AppUser> peers
+    );
+
+    @Query("""
+            select m.sender.id, count(m)
+            from Message m
+            where m.sender in :senders
+              and m.recipient = :recipient
+              and m.readAt is null
+            group by m.sender.id
+            """)
+    List<Object[]> countUnreadBySenders(
+            @Param("senders") List<AppUser> senders,
+            @Param("recipient") AppUser recipient
+    );
+
     void deleteBySenderOrRecipient(AppUser sender, AppUser recipient);
 }

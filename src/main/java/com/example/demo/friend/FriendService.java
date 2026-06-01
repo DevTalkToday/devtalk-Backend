@@ -2,13 +2,17 @@ package com.example.demo.friend;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.auth.UserRepository;
-import jakarta.transaction.Transactional;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Transactional(readOnly = true)
 public class FriendService {
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
@@ -18,7 +22,7 @@ public class FriendService {
         this.userRepository = userRepository;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public FriendSummaryResponse getSummary(AppUser currentUser) {
         List<FriendshipResponse> friends = friendshipRepository
                 .findByUserAndStatus(currentUser, FriendshipStatus.ACCEPTED)
@@ -41,18 +45,31 @@ public class FriendService {
         return new FriendSummaryResponse(friends, received, sent);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<FriendSearchResponse> search(AppUser currentUser, String keyword) {
         String q = keyword == null ? "" : keyword.trim();
         if (q.length() < 2) {
             return List.of();
         }
 
-        return userRepository.searchUsers(q, currentUser.getId())
+        List<AppUser> users = userRepository.searchUsers(q, currentUser.getId())
                 .stream()
                 .limit(20)
+                .toList();
+        if (users.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Friendship> friendships = friendshipRepository.findBetweenUserAndCandidates(currentUser, users)
+                .stream()
+                .collect(Collectors.toMap(
+                        friendship -> peerIdOf(friendship, currentUser),
+                        Function.identity()
+                ));
+
+        return users.stream()
                 .map(user -> {
-                    Friendship friendship = friendshipRepository.findBetween(currentUser, user).orElse(null);
+                    Friendship friendship = friendships.get(user.getId());
                     return new FriendSearchResponse(
                             FriendUserResponse.from(user),
                             relationshipOf(friendship, currentUser),
@@ -122,5 +139,11 @@ public class FriendService {
         if (friendship.getStatus() == FriendshipStatus.ACCEPTED) return "FRIEND";
         if (friendship.getRequester().getId().equals(currentUser.getId())) return "SENT";
         return "RECEIVED";
+    }
+
+    private static Long peerIdOf(Friendship friendship, AppUser currentUser) {
+        return friendship.getRequester().getId().equals(currentUser.getId())
+                ? friendship.getAddressee().getId()
+                : friendship.getRequester().getId();
     }
 }
