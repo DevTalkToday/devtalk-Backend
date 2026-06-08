@@ -26,7 +26,7 @@ class PostControllerTest {
 
     @Test
     void listPostsPassesQueryParametersToService() throws Exception {
-        when(postService.listPosts("bug", "login", "popular", "unresolved", "or", 2, 12))
+        when(postService.listPosts("bug", "login", "popular", "unresolved", "or", 2, 12, null))
                 .thenReturn(new PostListResponse(List.of(), new PostListResponse.PageInfo(2, 12, 0, 1, false, true)));
 
         mvc.perform(get("/posts")
@@ -56,10 +56,17 @@ class PostControllerTest {
     }
 
     @Test
+    void bookmarkRequiresBearerToken() throws Exception {
+        mvc.perform(post("/posts/10/bookmark"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
     void getPostAllowsAnonymousViewer() throws Exception {
         PostResponse response = new PostResponse(
-                "10", "Title", "Body", "Body", "talk", null, null, null,
-                0, 0, 0, 0, List.of(), List.of(), List.of(), null, null, false, false, false
+                "10", "Title", "Body", "Body", "bug", null, null, null,
+                0, 0, 0, false, 0, List.of(), List.of(), List.of(), null, null, false, false, false
         );
         when(postService.getPost(10L, false, null)).thenReturn(response);
 

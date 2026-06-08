@@ -74,6 +74,16 @@ class MessageServiceTest {
         assertTrue(response.mine());
     }
 
+    @Test
+    void unreadCountReturnsTotalUnreadMessagesForRecipient() {
+        AppUser currentUser = user(1L, "me@example.com");
+        when(messageRepository.countByRecipientAndReadAtIsNull(currentUser)).thenReturn(4L);
+
+        MessageUnreadCountResponse response = service.unreadCount(currentUser);
+
+        assertEquals(4L, response.unreadCount());
+    }
+
     private static AppUser user(Long id, String email) {
         return withId(new AppUser(email, email, email, "hash", true, List.of()), id);
     }

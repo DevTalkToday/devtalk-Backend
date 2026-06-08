@@ -31,6 +31,7 @@ public class PostController {
 
     @GetMapping
     public PostListResponse listPosts(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
             @RequestParam(name = "category", required = false) String category,
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "sort", defaultValue = "latest") String sort,
@@ -39,7 +40,7 @@ public class PostController {
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "limit", defaultValue = "6") int limit
     ) {
-        return postService.listPosts(category, q, sort, resolution, match, page, limit);
+        return postService.listPosts(category, q, sort, resolution, match, page, limit, resolveViewer(authorization));
     }
 
     @PostMapping
@@ -78,6 +79,24 @@ public class PostController {
         AppUser user = authService.authenticate(readBearerToken(authorization));
         postService.deletePost(id, user);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/bookmark")
+    public PostResponse bookmarkPost(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.bookmarkPost(id, user);
+    }
+
+    @DeleteMapping("/{id}/bookmark")
+    public PostResponse unbookmarkPost(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.unbookmarkPost(id, user);
     }
 
     @PostMapping("/{id}/comments")

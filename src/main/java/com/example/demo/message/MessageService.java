@@ -70,8 +70,13 @@ public class MessageService {
                 .map(peer -> toConversationResponse(currentUser, peer, latestMessages.get(peer.getId()), unreadCounts.getOrDefault(peer.getId(), 0)))
                 .sorted(Comparator
                         .comparing(MessageService::lastMessageCreatedAt, Comparator.reverseOrder())
-                        .thenComparing(response -> response.user().nickname(), String.CASE_INSENSITIVE_ORDER))
+                .thenComparing(response -> response.user().nickname(), String.CASE_INSENSITIVE_ORDER))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MessageUnreadCountResponse unreadCount(AppUser currentUser) {
+        return new MessageUnreadCountResponse(messageRepository.countByRecipientAndReadAtIsNull(currentUser));
     }
 
     @Transactional(readOnly = true)

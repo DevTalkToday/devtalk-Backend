@@ -17,6 +17,10 @@ public interface PostCommentRepository extends JpaRepository<PostComment, Long> 
 
     long countByAuthor(AppUser author);
 
+    List<PostComment> findByAuthorAndPostCategoryNotOrderByCreatedAtDesc(AppUser author, String category, Pageable pageable);
+
+    long countByAuthorAndPostCategoryNot(AppUser author, String category);
+
     @Query("""
             select c.author.id, count(c)
             from PostComment c

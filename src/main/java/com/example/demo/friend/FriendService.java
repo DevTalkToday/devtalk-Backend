@@ -46,6 +46,13 @@ public class FriendService {
     }
 
     @Transactional(readOnly = true)
+    public FriendReceivedCountResponse receivedCount(AppUser currentUser) {
+        return new FriendReceivedCountResponse(
+                friendshipRepository.countByAddresseeAndStatus(currentUser, FriendshipStatus.PENDING)
+        );
+    }
+
+    @Transactional(readOnly = true)
     public List<FriendSearchResponse> search(AppUser currentUser, String keyword) {
         String q = keyword == null ? "" : keyword.trim();
         if (q.length() < 2) {

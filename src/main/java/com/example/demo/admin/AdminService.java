@@ -9,6 +9,7 @@ import com.example.demo.friend.FriendshipRepository;
 import com.example.demo.message.MessageRepository;
 import com.example.demo.notification.NotificationRepository;
 import com.example.demo.post.Post;
+import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
 import com.example.demo.post.PostRepository;
@@ -31,6 +32,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
+    private final PostBookmarkRepository postBookmarkRepository;
     private final AuthTokenRepository authTokenRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
     private final FriendshipRepository friendshipRepository;
@@ -43,6 +45,7 @@ public class AdminService {
             UserRepository userRepository,
             PostRepository postRepository,
             PostCommentRepository commentRepository,
+            PostBookmarkRepository postBookmarkRepository,
             AuthTokenRepository authTokenRepository,
             OAuthAccountRepository oAuthAccountRepository,
             FriendshipRepository friendshipRepository,
@@ -54,6 +57,7 @@ public class AdminService {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
+        this.postBookmarkRepository = postBookmarkRepository;
         this.authTokenRepository = authTokenRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
         this.friendshipRepository = friendshipRepository;
@@ -110,6 +114,7 @@ public class AdminService {
         authTokenRepository.deleteByUser(target);
         oAuthAccountRepository.deleteByUser(target);
         notificationPreferenceRepository.deleteByUser(target);
+        postBookmarkRepository.deleteByUser(target);
         notificationRepository.deleteByRecipientOrActor(target, target);
         messageRepository.deleteBySenderOrRecipient(target, target);
         friendshipRepository.deleteByRequesterOrAddressee(target, target);

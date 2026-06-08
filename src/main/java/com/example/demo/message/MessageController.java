@@ -36,6 +36,14 @@ public class MessageController {
         return messageService.listConversations(user);
     }
 
+    @GetMapping("/unread-count")
+    public MessageUnreadCountResponse unreadCount(
+            @RequestHeader(name = "Authorization", required = false) String authorization
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return messageService.unreadCount(user);
+    }
+
     @GetMapping("/conversations/{userId}")
     public List<MessageResponse> getConversation(
             @RequestHeader(name = "Authorization", required = false) String authorization,

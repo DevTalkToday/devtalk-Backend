@@ -2,6 +2,10 @@ package com.example.demo.auth;
 
 import com.example.demo.auth.dto.AuthResponse;
 import com.example.demo.auth.dto.CompleteProfileRequest;
+import com.example.demo.auth.dto.EmailVerificationConfirmRequest;
+import com.example.demo.auth.dto.EmailVerificationConfirmResponse;
+import com.example.demo.auth.dto.EmailVerificationRequest;
+import com.example.demo.auth.dto.EmailVerificationRequestResponse;
 import com.example.demo.auth.dto.GithubLoginRequest;
 import com.example.demo.auth.dto.GoogleLoginRequest;
 import com.example.demo.auth.dto.LoginRequest;
@@ -31,6 +35,16 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.signup(request));
+    }
+
+    @PostMapping("/email-verification/request")
+    public EmailVerificationRequestResponse requestEmailVerification(@Valid @RequestBody EmailVerificationRequest request) {
+        return authService.requestEmailVerification(request);
+    }
+
+    @PostMapping("/email-verification/confirm")
+    public EmailVerificationConfirmResponse confirmEmailVerification(@Valid @RequestBody EmailVerificationConfirmRequest request) {
+        return authService.confirmEmailVerification(request);
     }
 
     @PostMapping("/login")

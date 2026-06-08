@@ -31,28 +31,40 @@ public class PostSeedData implements CommandLineRunner {
                 )));
 
         PostPayload qna = new PostPayload(
-                "Next.js 배포 후 라우트 캐시가 갱신되지 않은 기록",
-                "배포 직후 일부 사용자가 이전 페이지 데이터를 계속 보는 문제가 있었습니다. 라우트 캐시와 요청 캐시 무효화 타이밍을 분리해서 확인했고, 배포 후 첫 요청에서 stale 데이터가 남는 조건을 찾았습니다.",
+                "Next.js 배포 후 stale 캐시를 정리한 해결 기록",
+                "배포 직후 이전 페이지가 남아 있던 문제를 정리한 기록입니다. 캐시 무효화 시점과 stale 응답 조건을 추적해 해결했습니다.",
                 "qna",
                 List.of("nextjs", "cache", "deploy"),
                 List.of("프론트엔드"),
-                new PostPayload.QuestionPayload(false, "Next.js 16 / Vercel", "router.refresh와 revalidatePath를 확인", null),
+                new PostPayload.QuestionPayload(
+                        "배포 직후 최신 페이지 데이터가 바로 노출되어야 합니다.",
+                        "첫 요청에서 stale 응답이 남아 구버전 화면이 잠깐 보였습니다.",
+                        List.of("메인 페이지 접속", "구버전 데이터 노출 확인", "캐시 재검증 후 최신 데이터 확인"),
+                        null
+                ),
                 null
         );
 
         PostPayload bug = new PostPayload(
-                "Markdown 이미지 미리보기에서 메모리가 계속 증가한 에러",
-                "이미지 파일을 반복해서 첨부하고 제거하면 브라우저 메모리가 계속 증가했습니다. Blob URL 해제가 누락되어 있었고, 컴포넌트 unmount와 파일 교체 시점에 revokeObjectURL을 호출하도록 수정했습니다.",
+                "Markdown 이미지 미리보기에서 메모리가 계속 증가하는 도움 필요",
+                "이미지 첨부와 제거를 반복하면 브라우저 메모리가 계속 증가합니다. Blob URL 정리 누락 가능성을 의심하고 있습니다.",
                 "bug",
                 List.of("editor", "memory", "blob"),
                 List.of("프론트엔드", "QA"),
                 null,
-                new PostPayload.BugPayload("investigating", "P1", "@frontend", "Chrome / Windows", "이미지 제거 시 메모리 반환", "메모리 사용량 지속 증가", List.of("이미지 첨부", "이미지 제거", "메모리 확인"), List.of("editor", "performance"), 2, null)
+                new PostPayload.BugPayload(
+                        "investigating",
+                        "이미지 제거 시 메모리 사용량이 안정적으로 회수되어야 합니다.",
+                        "이미지 제거 후에도 메모리 사용량이 계속 증가합니다.",
+                        List.of("이미지 첨부", "이미지 제거", "메모리 사용량 확인"),
+                        2,
+                        null
+                )
         );
 
         PostPayload talk = new PostPayload(
-                "같은 인증 에러가 반복되지 않도록 남긴 팀 회고",
-                "토큰 만료 처리와 게스트 세션 처리가 섞이면서 같은 인증 문제가 반복되었습니다. 요청 레이어에서 토큰 발급과 로그인 사용자 판별을 분리하고, 보호 기능은 명시적으로 로그인 상태를 요구하도록 정리했습니다.",
+                "같은 인증 오류를 반복하지 않도록 대응 내용을 남깁니다",
+                "토큰 만료 처리와 게스트 세션 흐름이 뒤섞여 같은 인증 문제가 반복됐습니다. 요청 레이어와 보호 로직을 분리한 회고입니다.",
                 "talk",
                 List.of("auth", "retrospective"),
                 List.of("백엔드"),

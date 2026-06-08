@@ -12,22 +12,18 @@ public record PostPayload(
         BugPayload bug
 ) {
     public record QuestionPayload(
-            boolean solved,
-            String environment,
-            String tried,
+            String expected,
+            String actual,
+            List<String> reproductionSteps,
             String acceptedCommentId
     ) {
     }
 
     public record BugPayload(
             String status,
-            String priority,
-            String assignee,
-            String environment,
             String expected,
             String actual,
             List<String> reproductionSteps,
-            List<String> labels,
             Integer watchers,
             String acceptedCommentId
     ) {

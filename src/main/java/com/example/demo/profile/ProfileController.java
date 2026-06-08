@@ -66,6 +66,16 @@ public class ProfileController {
         return profileService.listPosts(user, page, limit);
     }
 
+    @GetMapping("/me/bookmarks")
+    public PostListResponse bookmarks(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "limit", defaultValue = "24") int limit
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return profileService.listBookmarks(user, page, limit);
+    }
+
     @GetMapping("/{id}/posts")
     public PostListResponse publicPosts(
             @PathVariable Long id,

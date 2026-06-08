@@ -15,6 +15,7 @@ public record PostResponse(
         int commentCount,
         int likeCount,
         int bookmarkCount,
+        boolean bookmarked,
         int viewCount,
         List<String> tags,
         List<String> majors,

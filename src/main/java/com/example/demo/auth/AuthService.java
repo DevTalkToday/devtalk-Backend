@@ -2,6 +2,10 @@ package com.example.demo.auth;
 
 import com.example.demo.auth.dto.AuthResponse;
 import com.example.demo.auth.dto.CompleteProfileRequest;
+import com.example.demo.auth.dto.EmailVerificationConfirmRequest;
+import com.example.demo.auth.dto.EmailVerificationConfirmResponse;
+import com.example.demo.auth.dto.EmailVerificationRequest;
+import com.example.demo.auth.dto.EmailVerificationRequestResponse;
 import com.example.demo.auth.dto.GithubLoginRequest;
 import com.example.demo.auth.dto.GoogleLoginRequest;
 import com.example.demo.auth.dto.LoginRequest;
@@ -34,6 +38,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final GithubOAuthClient githubOAuthClient;
     private final GoogleOAuthClient googleOAuthClient;
+    private final EmailVerificationService emailVerificationService;
 
     public AuthService(
             UserRepository userRepository,
@@ -41,7 +46,8 @@ public class AuthService {
             OAuthAccountRepository oAuthAccountRepository,
             PasswordEncoder passwordEncoder,
             GithubOAuthClient githubOAuthClient,
-            GoogleOAuthClient googleOAuthClient
+            GoogleOAuthClient googleOAuthClient,
+            EmailVerificationService emailVerificationService
     ) {
         this.userRepository = userRepository;
         this.authTokenRepository = authTokenRepository;
@@ -49,6 +55,15 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.githubOAuthClient = githubOAuthClient;
         this.googleOAuthClient = googleOAuthClient;
+        this.emailVerificationService = emailVerificationService;
+    }
+
+    public EmailVerificationRequestResponse requestEmailVerification(EmailVerificationRequest request) {
+        return emailVerificationService.requestCode(request);
+    }
+
+    public EmailVerificationConfirmResponse confirmEmailVerification(EmailVerificationConfirmRequest request) {
+        return emailVerificationService.confirmCode(request);
     }
 
     @Transactional
@@ -57,6 +72,7 @@ public class AuthService {
         if (userRepository.existsByUsernameIgnoreCase(email) || userRepository.findByEmailIgnoreCase(email).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
         }
+        emailVerificationService.assertVerified(email);
 
         AppUser user = new AppUser(
                 email,
@@ -67,12 +83,16 @@ public class AuthService {
                 normalizeMajors(request.majors())
         );
 
-        return createAuthResponse(userRepository.save(user));
+        AuthResponse response = createAuthResponse(userRepository.save(user));
+        emailVerificationService.clearVerification(email);
+        return response;
     }
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        AppUser user = userRepository.findByUsernameIgnoreCase(request.username().trim())
+        String identifier = request.username().trim();
+        AppUser user = userRepository.findByUsernameIgnoreCase(identifier)
+                .or(() -> userRepository.findByEmailIgnoreCase(identifier))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
@@ -236,8 +256,15 @@ public class AuthService {
     }
 
     private static String normalizeNickname(String nickname, String username) {
-        if (nickname == null || nickname.isBlank()) return username;
+        if (nickname == null || nickname.isBlank()) return defaultNickname(username);
         return nickname.trim();
+    }
+
+    private static String defaultNickname(String username) {
+        String normalized = username == null ? "" : username.trim();
+        int atIndex = normalized.indexOf('@');
+        String localPart = atIndex <= 0 ? normalized : normalized.substring(0, atIndex).trim();
+        return localPart.isBlank() ? normalized : localPart;
     }
 
     private static List<String> normalizeMajors(List<String> majors) {

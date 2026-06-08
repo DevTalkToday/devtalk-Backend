@@ -20,8 +20,9 @@ public class SchemaInitializer implements CommandLineRunner {
         createCollectionTable("app_user_majors", "app_user_id", "majors");
         createCollectionTable("post_tags", "post_id", "tags");
         createCollectionTable("post_majors", "post_id", "majors");
+        createCollectionTable("post_question_reproduction_steps", "post_id", "question_reproduction_steps");
         createCollectionTable("post_bug_reproduction_steps", "post_id", "bug_reproduction_steps");
-        createCollectionTable("post_bug_labels", "post_id", "bug_labels");
+        createPostBookmarksTable();
     }
 
     private void createCollectionTable(String tableName, String ownerColumn, String valueColumn) {
@@ -34,5 +35,20 @@ public class SchemaInitializer implements CommandLineRunner {
                     INDEX `%s` (`%s`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """.formatted(tableName, ownerColumn, valueColumn, "idx_" + tableName + "_owner", ownerColumn));
+    }
+
+    private void createPostBookmarksTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS `post_bookmarks` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
+                    `user_id` BIGINT NOT NULL,
+                    `post_id` BIGINT NOT NULL,
+                    `created_at` DATETIME(6) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_post_bookmarks_user_post` (`user_id`, `post_id`),
+                    INDEX `idx_post_bookmarks_user_created` (`user_id`, `created_at`),
+                    INDEX `idx_post_bookmarks_post` (`post_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """);
     }
 }

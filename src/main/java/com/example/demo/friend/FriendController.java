@@ -35,6 +35,14 @@ public class FriendController {
         return friendService.getSummary(user);
     }
 
+    @GetMapping("/received-count")
+    public FriendReceivedCountResponse receivedCount(
+            @RequestHeader(name = "Authorization", required = false) String authorization
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return friendService.receivedCount(user);
+    }
+
     @GetMapping("/search")
     public List<FriendSearchResponse> search(
             @RequestHeader(name = "Authorization", required = false) String authorization,

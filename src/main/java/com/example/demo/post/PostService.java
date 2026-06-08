@@ -5,6 +5,7 @@ import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -27,23 +28,26 @@ public class PostService {
     private static final String RESOLUTION_MODE_RESOLVED = "RESOLVED";
     private static final String RESOLUTION_MODE_UNRESOLVED = "UNRESOLVED";
     private static final String RESOLUTION_MODE_ANY_STATUS = "ANY_STATUS";
+    private static final String PRIVATE_POST_CATEGORY = "talk";
     private static final Set<String> CATEGORIES = Set.of("qna", "bug", "talk");
     private static final Set<String> SORTS = Set.of("latest", "oldest", "popular", "views", "comments");
     private static final Set<String> RESOLUTIONS = Set.of("all", "resolved", "unresolved");
     private static final Set<String> BUG_STATUSES = Set.of("open", "investigating", "fixed", "closed");
-    private static final Set<String> BUG_PRIORITIES = Set.of("P0", "P1", "P2", "P3");
 
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
+    private final PostBookmarkRepository bookmarkRepository;
     private final NotificationService notificationService;
 
     public PostService(
             PostRepository postRepository,
             PostCommentRepository commentRepository,
+            PostBookmarkRepository bookmarkRepository,
             NotificationService notificationService
     ) {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
+        this.bookmarkRepository = bookmarkRepository;
         this.notificationService = notificationService;
     }
 
@@ -54,7 +58,8 @@ public class PostService {
             String resolution,
             String match,
             int page,
-            int limit
+            int limit,
+            AppUser viewer
     ) {
         List<String> categories = parseCsv(category).stream()
                 .map(value -> value.toLowerCase(Locale.ROOT))
@@ -68,12 +73,13 @@ public class PostService {
         String safeMatch = "or".equals(normalizeLower(match)) ? "or" : "and";
         List<String> keywords = parseKeywords(q);
         int safeLimit = Math.min(Math.max(limit, 1), 24);
+        Long viewerId = viewerId(viewer);
 
         if (canUseDatabaseListing(categories, resolutions, keywords, safeSort, safeMatch)) {
-            return listPostsFromRepository(categories, resolutions, safeSort, page, safeLimit);
+            return listPostsFromRepository(categories, resolutions, safeSort, page, safeLimit, viewer);
         }
 
-        List<Post> filtered = loadPostsForInMemoryFiltering(categories, resolutions, safeMatch).stream()
+        List<Post> filtered = loadPostsForInMemoryFiltering(categories, resolutions, safeMatch, viewerId).stream()
                 .filter(post -> matchesCategoryAndResolution(post, categories, resolutions, safeMatch))
                 .filter(post -> matchesKeywords(post, keywords, safeMatch))
                 .sorted(comparatorFor(safeSort))
@@ -86,7 +92,7 @@ public class PostService {
         int end = Math.min(start + safeLimit, totalCount);
 
         return new PostListResponse(
-                filtered.subList(start, end).stream().map(this::toSummaryResponse).toList(),
+                toSummaryResponses(filtered.subList(start, end), viewer),
                 new PostListResponse.PageInfo(
                         safePage,
                         safeLimit,
@@ -101,6 +107,7 @@ public class PostService {
     @Transactional
     public PostResponse getPost(Long id, boolean track, AppUser viewer) {
         Post post = findPost(id);
+        requireReadablePost(post, viewer);
         if (track) post.incrementViewCount();
         return toResponse(post, viewer);
     }
@@ -125,12 +132,40 @@ public class PostService {
     public void deletePost(Long id, AppUser actor) {
         Post post = findPost(id);
         requirePostDeleter(post, actor);
+        bookmarkRepository.deleteByPost(post);
         postRepository.delete(post);
+    }
+
+    @Transactional
+    public PostResponse bookmarkPost(Long id, AppUser actor) {
+        Post post = findPost(id);
+        requireReadablePost(post, actor);
+
+        if (bookmarkRepository.findByPostAndUser(post, actor).isEmpty()) {
+            bookmarkRepository.save(new PostBookmark(actor, post));
+            post.incrementBookmarkCount();
+        }
+
+        return toResponse(post, actor);
+    }
+
+    @Transactional
+    public PostResponse unbookmarkPost(Long id, AppUser actor) {
+        Post post = findPost(id);
+        requireReadablePost(post, actor);
+
+        bookmarkRepository.findByPostAndUser(post, actor).ifPresent((bookmark) -> {
+            bookmarkRepository.delete(bookmark);
+            post.decrementBookmarkCount();
+        });
+
+        return toResponse(post, actor);
     }
 
     @Transactional
     public PostResponse createComment(Long postId, CommentPayload request, AppUser author) {
         Post post = findPost(postId);
+        requireReadablePost(post, author);
         String body = normalizeCommentBody(request == null ? null : request.body());
         PostComment comment = new PostComment(post, author, body);
         post.addComment(comment);
@@ -141,15 +176,18 @@ public class PostService {
 
     @Transactional
     public PostResponse updateComment(Long postId, Long commentId, CommentPayload request, AppUser actor) {
+        Post post = findPost(postId);
+        requireReadablePost(post, actor);
         PostComment comment = findComment(postId, commentId);
         requireCommentAuthor(comment, actor);
         comment.updateBody(normalizeCommentBody(request == null ? null : request.body()));
-        return toResponse(findPost(postId), actor);
+        return toResponse(post, actor);
     }
 
     @Transactional
     public PostResponse deleteComment(Long postId, Long commentId, AppUser actor) {
         Post post = findPost(postId);
+        requireReadablePost(post, actor);
         PostComment comment = findComment(postId, commentId);
         if (!canDeleteComment(actor, comment, post)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_DELETE_FORBIDDEN");
@@ -164,6 +202,7 @@ public class PostService {
     @Transactional
     public PostResponse setAcceptedComment(Long postId, Long commentId, CommentAcceptPayload request, AppUser actor) {
         Post post = findPost(postId);
+        requireReadablePost(post, actor);
         if ("talk".equals(post.getCategory())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COMMENT_ACCEPT_ONLY_FOR_QNA_OR_BUG");
         }
@@ -212,9 +251,9 @@ public class PostService {
         if ("qna".equals(category)) {
             PostPayload.QuestionPayload source = request.question();
             question = new PostPayload.QuestionPayload(
-                    source != null && source.solved(),
-                    clamp(source == null ? null : source.environment(), 180),
-                    clamp(source == null ? null : source.tried(), 180),
+                    clamp(source == null ? null : source.expected(), 240),
+                    clamp(source == null ? null : source.actual(), 240),
+                    cleanList(source == null ? null : source.reproductionSteps(), 8),
                     source == null ? null : source.acceptedCommentId()
             );
         }
@@ -222,16 +261,11 @@ public class PostService {
         if ("bug".equals(category)) {
             PostPayload.BugPayload source = request.bug();
             String status = normalizeLower(source == null ? null : source.status());
-            String priority = trim(source == null ? null : source.priority()).toUpperCase(Locale.ROOT);
             bug = new PostPayload.BugPayload(
                     BUG_STATUSES.contains(status) ? status : "open",
-                    BUG_PRIORITIES.contains(priority) ? priority : "P2",
-                    clamp(source == null ? null : source.assignee(), 80),
-                    clamp(source == null ? null : source.environment(), 180),
                     clamp(source == null ? null : source.expected(), 240),
                     clamp(source == null ? null : source.actual(), 240),
                     cleanList(source == null ? null : source.reproductionSteps(), 8),
-                    cleanList(source == null ? null : source.labels(), 6),
                     source == null || source.watchers() == null ? 0 : Math.max(source.watchers(), 0),
                     source == null ? null : source.acceptedCommentId()
             );
@@ -275,7 +309,7 @@ public class PostService {
     }
 
     private Boolean isResolved(Post post) {
-        if ("qna".equals(post.getCategory())) return post.isQuestionSolved();
+        if ("qna".equals(post.getCategory())) return true;
         if ("bug".equals(post.getCategory())) return "fixed".equals(post.getBugStatus()) || "closed".equals(post.getBugStatus());
         return null;
     }
@@ -308,6 +342,7 @@ public class PostService {
                 post.getComments().size(),
                 post.getLikeCount(),
                 post.getBookmarkCount(),
+                isBookmarked(post, viewer),
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
@@ -320,7 +355,7 @@ public class PostService {
         );
     }
 
-    private PostSummaryResponse toSummaryResponse(Post post) {
+    private PostSummaryResponse toSummaryResponse(Post post, boolean bookmarked) {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
@@ -332,6 +367,7 @@ public class PostService {
                 post.getComments().size(),
                 post.getLikeCount(),
                 post.getBookmarkCount(),
+                bookmarked,
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
@@ -364,9 +400,10 @@ public class PostService {
     private QuestionResponse toQuestionResponse(Post post) {
         if (!"qna".equals(post.getCategory())) return null;
         return new QuestionResponse(
-                post.isQuestionSolved(),
-                nullToBlank(post.getQuestionEnvironment()),
-                nullToBlank(post.getQuestionTried()),
+                true,
+                nullToBlank(post.getQuestionExpected()),
+                nullToBlank(post.getQuestionActual()),
+                List.copyOf(post.getQuestionReproductionSteps()),
                 post.getAcceptedCommentId() == null ? null : String.valueOf(post.getAcceptedCommentId())
         );
     }
@@ -375,13 +412,9 @@ public class PostService {
         if (!"bug".equals(post.getCategory())) return null;
         return new BugResponse(
                 nullToDefault(post.getBugStatus(), "open"),
-                nullToDefault(post.getBugPriority(), "P2"),
-                nullToBlank(post.getBugAssignee()),
-                nullToBlank(post.getBugEnvironment()),
                 nullToBlank(post.getBugExpected()),
                 nullToBlank(post.getBugActual()),
                 List.copyOf(post.getBugReproductionSteps()),
-                List.copyOf(post.getBugLabels()),
                 post.getBugWatchers(),
                 post.getAcceptedCommentId() == null ? null : String.valueOf(post.getAcceptedCommentId())
         );
@@ -392,12 +425,15 @@ public class PostService {
             List<String> resolutions,
             String sort,
             int page,
-            int limit
+            int limit,
+            AppUser viewer
     ) {
+        Long viewerId = viewerId(viewer);
         Page<Post> pageResult = postRepository.findListingPage(
                 listingCategories(categories),
                 categories.isEmpty(),
                 resolutionMode(resolutions),
+                viewerId,
                 PageRequest.of(Math.max(page - 1, 0), limit, repositorySort(sort))
         );
 
@@ -408,12 +444,13 @@ public class PostService {
                     listingCategories(categories),
                     categories.isEmpty(),
                     resolutionMode(resolutions),
+                    viewerId,
                     PageRequest.of(safePage - 1, limit, repositorySort(sort))
             );
         }
 
         return new PostListResponse(
-                pageResult.getContent().stream().map(this::toSummaryResponse).toList(),
+                toSummaryResponses(pageResult.getContent(), viewer),
                 new PostListResponse.PageInfo(
                         safePage,
                         limit,
@@ -425,13 +462,18 @@ public class PostService {
         );
     }
 
-    private List<Post> loadPostsForInMemoryFiltering(List<String> categories, List<String> resolutions, String match) {
+    private List<Post> loadPostsForInMemoryFiltering(List<String> categories, List<String> resolutions, String match, Long viewerId) {
         boolean hasCategoryFilter = !categories.isEmpty();
         boolean hasResolutionFilter = hasActiveResolutionFilter(resolutions);
         if ("or".equals(match) && hasCategoryFilter && hasResolutionFilter) {
-            return postRepository.findAll();
+            return postRepository.findAllForListing(List.of(EMPTY_CATEGORY_SENTINEL), true, RESOLUTION_MODE_ALL, viewerId);
         }
-        return postRepository.findAllForListing(listingCategories(categories), categories.isEmpty(), resolutionMode(resolutions));
+        return postRepository.findAllForListing(
+                listingCategories(categories),
+                categories.isEmpty(),
+                resolutionMode(resolutions),
+                viewerId
+        );
     }
 
     private static List<String> parseCsv(String value) {
@@ -561,6 +603,29 @@ public class PostService {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    private List<PostSummaryResponse> toSummaryResponses(List<Post> posts, AppUser viewer) {
+        Set<Long> bookmarkedIds = bookmarkedPostIds(viewer, posts);
+        return posts.stream()
+                .map(post -> toSummaryResponse(post, bookmarkedIds.contains(post.getId())))
+                .toList();
+    }
+
+    private Set<Long> bookmarkedPostIds(AppUser viewer, List<Post> posts) {
+        if (viewer == null || posts.isEmpty()) {
+            return Set.of();
+        }
+
+        List<Long> postIds = posts.stream()
+                .map(Post::getId)
+                .toList();
+        return new HashSet<>(bookmarkRepository.findBookmarkedPostIds(viewer, postIds));
+    }
+
+    private boolean isBookmarked(Post post, AppUser viewer) {
+        if (viewer == null) return false;
+        return bookmarkRepository.existsByPostAndUser(post, viewer);
+    }
+
     private boolean matchesKeywords(Post post, List<String> keywords, String match) {
         if (keywords.isEmpty()) return true;
         String haystack = buildSearchableText(post).toLowerCase(Locale.ROOT);
@@ -577,12 +642,12 @@ public class PostService {
         appendSearchValue(builder, post.getContent());
         appendSearchValues(builder, post.getTags());
         appendSearchValues(builder, post.getMajors());
-        appendSearchValue(builder, post.getQuestionEnvironment());
-        appendSearchValue(builder, post.getQuestionTried());
-        appendSearchValue(builder, post.getBugEnvironment());
+        appendSearchValue(builder, post.getQuestionExpected());
+        appendSearchValue(builder, post.getQuestionActual());
+        appendSearchValues(builder, post.getQuestionReproductionSteps());
         appendSearchValue(builder, post.getBugExpected());
         appendSearchValue(builder, post.getBugActual());
-        appendSearchValues(builder, post.getBugLabels());
+        appendSearchValues(builder, post.getBugReproductionSteps());
         for (PostComment comment : post.getComments()) {
             appendSearchValue(builder, comment.getBody());
         }
@@ -608,6 +673,12 @@ public class PostService {
         }
     }
 
+    private void requireReadablePost(Post post, AppUser viewer) {
+        if (!isReadableBy(viewer, post)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NOT_FOUND");
+        }
+    }
+
     private void requirePostDeleter(Post post, AppUser actor) {
         if (!canManagePost(actor, post) && !AdminAccess.isAdmin(actor)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "POST_MODIFY_FORBIDDEN");
@@ -624,6 +695,21 @@ public class PostService {
         if (actor == null || post == null || post.getAuthor() == null) return false;
         if (post.getAuthor().getId().equals(actor.getId())) return true;
         return isDevtalkBotPost(post) && isDevtalkManager(actor);
+    }
+
+    private static boolean isReadableBy(AppUser viewer, Post post) {
+        if (post == null) return false;
+        if (!isPrivatePost(post)) return true;
+        if (viewer == null || post.getAuthor() == null) return false;
+        return post.getAuthor().getId().equals(viewer.getId());
+    }
+
+    private static boolean isPrivatePost(Post post) {
+        return PRIVATE_POST_CATEGORY.equals(post.getCategory());
+    }
+
+    private static Long viewerId(AppUser viewer) {
+        return viewer == null ? null : viewer.getId();
     }
 
     private static boolean canEditComment(AppUser actor, PostComment comment) {

@@ -5,6 +5,8 @@ import com.example.demo.auth.UserRepository;
 import com.example.demo.auth.dto.UserResponse;
 import com.example.demo.post.BugResponse;
 import com.example.demo.post.Post;
+import com.example.demo.post.PostBookmark;
+import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostAuthorResponse;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
@@ -14,7 +16,9 @@ import com.example.demo.post.PostSummaryResponse;
 import com.example.demo.post.QuestionResponse;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,19 +28,23 @@ import org.springframework.web.server.ResponseStatusException;
 @Transactional(readOnly = true)
 public class ProfileService {
     private static final int MAX_PROFILE_ITEMS = 48;
+    private static final String PRIVATE_POST_CATEGORY = "talk";
 
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
+    private final PostBookmarkRepository bookmarkRepository;
 
     public ProfileService(
             UserRepository userRepository,
             PostRepository postRepository,
-            PostCommentRepository commentRepository
+            PostCommentRepository commentRepository,
+            PostBookmarkRepository bookmarkRepository
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
+        this.bookmarkRepository = bookmarkRepository;
     }
 
     @Transactional(readOnly = true)
@@ -55,8 +63,8 @@ public class ProfileService {
         AppUser user = findPublicUser(userId);
         return new PublicProfileResponse(
                 PublicProfileUserResponse.from(user),
-                postRepository.countByAuthor(user),
-                commentRepository.countByAuthor(user),
+                postRepository.countByAuthorAndCategoryNot(user, PRIVATE_POST_CATEGORY),
+                commentRepository.countByAuthorAndPostCategoryNot(user, PRIVATE_POST_CATEGORY),
                 commentRepository.countAcceptedByAuthor(user)
         );
     }
@@ -82,25 +90,77 @@ public class ProfileService {
     @Transactional(readOnly = true)
     public PostListResponse listPosts(AppUser currentUser, int page, int limit) {
         AppUser user = findUser(currentUser);
-        return listPostsForUser(user, page, limit);
+        return listPostsForUser(user, currentUser, page, limit);
     }
 
     @Transactional(readOnly = true)
     public PostListResponse listPosts(Long userId, int page, int limit) {
         AppUser user = findPublicUser(userId);
-        return listPostsForUser(user, page, limit);
+        return listPublicPostsForUser(user, page, limit);
     }
 
-    private PostListResponse listPostsForUser(AppUser user, int page, int limit) {
+    @Transactional(readOnly = true)
+    public PostListResponse listBookmarks(AppUser currentUser, int page, int limit) {
+        AppUser user = findUser(currentUser);
+        int safeLimit = safeLimit(limit);
+        var pageResult = bookmarkRepository.findReadableByUser(
+                user,
+                PageRequest.of(Math.max(page - 1, 0), safeLimit, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
+        );
+        int totalPages = Math.max(pageResult.getTotalPages(), 1);
+        int safePage = safePage(page, totalPages);
+
+        if (safePage != pageResult.getNumber() + 1 && pageResult.getTotalElements() > 0) {
+            pageResult = bookmarkRepository.findReadableByUser(
+                    user,
+                    PageRequest.of(safePage - 1, safeLimit, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
+            );
+        }
+
+        List<PostSummaryResponse> items = pageResult.getContent().stream()
+                .map(PostBookmark::getPost)
+                .map(post -> toPostSummaryResponse(post, true))
+                .toList();
+
+        return new PostListResponse(items, new PostListResponse.PageInfo(
+                safePage,
+                safeLimit,
+                Math.toIntExact(pageResult.getTotalElements()),
+                totalPages,
+                safePage < totalPages,
+                safePage > 1
+        ));
+    }
+
+    private PostListResponse listPostsForUser(AppUser user, AppUser viewer, int page, int limit) {
         int safeLimit = safeLimit(limit);
         long totalCount = postRepository.countByAuthor(user);
         int totalPages = totalPages(totalCount, safeLimit);
         int safePage = safePage(page, totalPages);
 
+        List<Post> posts = postRepository.findByAuthorOrderByCreatedAtDesc(user, PageRequest.of(safePage - 1, safeLimit));
+        List<PostSummaryResponse> items = toPostSummaryResponses(posts, viewer);
+
+        return new PostListResponse(items, new PostListResponse.PageInfo(
+                safePage,
+                safeLimit,
+                Math.toIntExact(totalCount),
+                totalPages,
+                safePage < totalPages,
+                safePage > 1
+        ));
+    }
+
+    private PostListResponse listPublicPostsForUser(AppUser user, int page, int limit) {
+        int safeLimit = safeLimit(limit);
+        long totalCount = postRepository.countByAuthorAndCategoryNot(user, PRIVATE_POST_CATEGORY);
+        int totalPages = totalPages(totalCount, safeLimit);
+        int safePage = safePage(page, totalPages);
+
         List<PostSummaryResponse> items = postRepository
-                .findByAuthorOrderByCreatedAtDesc(user, PageRequest.of(safePage - 1, safeLimit))
+                .findByAuthorAndCategoryNotOrderByCreatedAtDesc(user, PRIVATE_POST_CATEGORY, PageRequest.of(safePage - 1, safeLimit))
                 .stream()
-                .map(this::toPostSummaryResponse)
+                .map(post -> toPostSummaryResponse(post, false))
                 .toList();
 
         return new PostListResponse(items, new PostListResponse.PageInfo(
@@ -122,7 +182,7 @@ public class ProfileService {
     @Transactional(readOnly = true)
     public ProfileCommentListResponse listComments(Long userId, int page, int limit) {
         AppUser user = findPublicUser(userId);
-        return listCommentsForUser(user, page, limit);
+        return listPublicCommentsForUser(user, page, limit);
     }
 
     private ProfileCommentListResponse listCommentsForUser(AppUser user, int page, int limit) {
@@ -133,6 +193,28 @@ public class ProfileService {
 
         List<ProfileCommentResponse> items = commentRepository
                 .findByAuthorOrderByCreatedAtDesc(user, PageRequest.of(safePage - 1, safeLimit))
+                .stream()
+                .map(this::toProfileCommentResponse)
+                .toList();
+
+        return new ProfileCommentListResponse(items, new ProfileCommentListResponse.PageInfo(
+                safePage,
+                safeLimit,
+                Math.toIntExact(totalCount),
+                totalPages,
+                safePage < totalPages,
+                safePage > 1
+        ));
+    }
+
+    private ProfileCommentListResponse listPublicCommentsForUser(AppUser user, int page, int limit) {
+        int safeLimit = safeLimit(limit);
+        long totalCount = commentRepository.countByAuthorAndPostCategoryNot(user, PRIVATE_POST_CATEGORY);
+        int totalPages = totalPages(totalCount, safeLimit);
+        int safePage = safePage(page, totalPages);
+
+        List<ProfileCommentResponse> items = commentRepository
+                .findByAuthorAndPostCategoryNotOrderByCreatedAtDesc(user, PRIVATE_POST_CATEGORY, PageRequest.of(safePage - 1, safeLimit))
                 .stream()
                 .map(this::toProfileCommentResponse)
                 .toList();
@@ -179,7 +261,7 @@ public class ProfileService {
         );
     }
 
-    private PostSummaryResponse toPostSummaryResponse(Post post) {
+    private PostSummaryResponse toPostSummaryResponse(Post post, boolean bookmarked) {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
@@ -191,6 +273,7 @@ public class ProfileService {
                 post.getComments().size(),
                 post.getLikeCount(),
                 post.getBookmarkCount(),
+                bookmarked,
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
@@ -207,9 +290,10 @@ public class ProfileService {
     private QuestionResponse toQuestionResponse(Post post) {
         if (!"qna".equals(post.getCategory())) return null;
         return new QuestionResponse(
-                post.isQuestionSolved(),
-                nullToBlank(post.getQuestionEnvironment()),
-                nullToBlank(post.getQuestionTried()),
+                true,
+                nullToBlank(post.getQuestionExpected()),
+                nullToBlank(post.getQuestionActual()),
+                List.copyOf(post.getQuestionReproductionSteps()),
                 post.getAcceptedCommentId() == null ? null : String.valueOf(post.getAcceptedCommentId())
         );
     }
@@ -218,13 +302,9 @@ public class ProfileService {
         if (!"bug".equals(post.getCategory())) return null;
         return new BugResponse(
                 nullToDefault(post.getBugStatus(), "open"),
-                nullToDefault(post.getBugPriority(), "P2"),
-                nullToBlank(post.getBugAssignee()),
-                nullToBlank(post.getBugEnvironment()),
                 nullToBlank(post.getBugExpected()),
                 nullToBlank(post.getBugActual()),
                 List.copyOf(post.getBugReproductionSteps()),
-                List.copyOf(post.getBugLabels()),
                 post.getBugWatchers(),
                 post.getAcceptedCommentId() == null ? null : String.valueOf(post.getAcceptedCommentId())
         );
@@ -294,6 +374,21 @@ public class ProfileService {
 
     private static String nullToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private List<PostSummaryResponse> toPostSummaryResponses(List<Post> posts, AppUser viewer) {
+        Set<Long> bookmarkedIds = bookmarkedPostIds(viewer, posts);
+        return posts.stream()
+                .map(post -> toPostSummaryResponse(post, bookmarkedIds.contains(post.getId())))
+                .toList();
+    }
+
+    private Set<Long> bookmarkedPostIds(AppUser viewer, List<Post> posts) {
+        if (viewer == null || posts.isEmpty()) return Set.of();
+        return Set.copyOf(bookmarkRepository.findBookmarkedPostIds(
+                viewer,
+                posts.stream().map(Post::getId).toList()
+        ));
     }
 
     private static String trim(String value) {

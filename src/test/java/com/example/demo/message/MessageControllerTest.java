@@ -25,6 +25,13 @@ class MessageControllerTest {
     }
 
     @Test
+    void unreadCountRequiresBearerToken() throws Exception {
+        mvc.perform(get("/messages/unread-count"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
     void sendMessageValidatesRecipientAndBody() throws Exception {
         mvc.perform(post("/messages")
                         .header("Authorization", "Bearer token")

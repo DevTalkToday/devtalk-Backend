@@ -38,6 +38,8 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
             """)
     List<Friendship> findSentRequests(@Param("user") AppUser user);
 
+    long countByAddresseeAndStatus(AppUser addressee, FriendshipStatus status);
+
     @Query("""
             select f from Friendship f
             where (f.requester = :first and f.addressee = :second)

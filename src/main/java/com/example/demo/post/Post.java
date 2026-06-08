@@ -73,23 +73,19 @@ public class Post {
     @Column(nullable = false)
     private boolean questionSolved;
 
-    @Column(length = 180)
-    private String questionEnvironment;
+    @Column(length = 240)
+    private String questionExpected;
 
-    @Column(length = 180)
-    private String questionTried;
+    @Column(length = 240)
+    private String questionActual;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "post_question_reproduction_steps", joinColumns = @JoinColumn(name = "post_id"))
+    @Column(name = "question_reproduction_steps")
+    private List<String> questionReproductionSteps = new ArrayList<>();
 
     @Column(length = 40)
     private String bugStatus;
-
-    @Column(length = 10)
-    private String bugPriority;
-
-    @Column(length = 80)
-    private String bugAssignee;
-
-    @Column(length = 180)
-    private String bugEnvironment;
 
     @Column(length = 240)
     private String bugExpected;
@@ -101,11 +97,6 @@ public class Post {
     @CollectionTable(name = "post_bug_reproduction_steps", joinColumns = @JoinColumn(name = "post_id"))
     @Column(name = "bug_reproduction_steps")
     private List<String> bugReproductionSteps = new ArrayList<>();
-
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "post_bug_labels", joinColumns = @JoinColumn(name = "post_id"))
-    @Column(name = "bug_labels")
-    private List<String> bugLabels = new ArrayList<>();
 
     @Column(nullable = false)
     private int bugWatchers;
@@ -159,6 +150,14 @@ public class Post {
         return bookmarkCount;
     }
 
+    public void incrementBookmarkCount() {
+        this.bookmarkCount += 1;
+    }
+
+    public void decrementBookmarkCount() {
+        this.bookmarkCount = Math.max(0, this.bookmarkCount - 1);
+    }
+
     public int getViewCount() {
         return viewCount;
     }
@@ -179,28 +178,20 @@ public class Post {
         return questionSolved;
     }
 
-    public String getQuestionEnvironment() {
-        return questionEnvironment;
+    public String getQuestionExpected() {
+        return questionExpected;
     }
 
-    public String getQuestionTried() {
-        return questionTried;
+    public String getQuestionActual() {
+        return questionActual;
+    }
+
+    public List<String> getQuestionReproductionSteps() {
+        return questionReproductionSteps;
     }
 
     public String getBugStatus() {
         return bugStatus;
-    }
-
-    public String getBugPriority() {
-        return bugPriority;
-    }
-
-    public String getBugAssignee() {
-        return bugAssignee;
-    }
-
-    public String getBugEnvironment() {
-        return bugEnvironment;
     }
 
     public String getBugExpected() {
@@ -213,10 +204,6 @@ public class Post {
 
     public List<String> getBugReproductionSteps() {
         return bugReproductionSteps;
-    }
-
-    public List<String> getBugLabels() {
-        return bugLabels;
     }
 
     public int getBugWatchers() {
@@ -240,35 +227,29 @@ public class Post {
         this.updatedAt = Instant.now();
 
         this.questionSolved = false;
-        this.questionEnvironment = null;
-        this.questionTried = null;
+        this.questionExpected = null;
+        this.questionActual = null;
+        this.questionReproductionSteps = new ArrayList<>();
         this.bugStatus = null;
-        this.bugPriority = null;
-        this.bugAssignee = null;
-        this.bugEnvironment = null;
         this.bugExpected = null;
         this.bugActual = null;
         this.bugReproductionSteps = new ArrayList<>();
-        this.bugLabels = new ArrayList<>();
         this.bugWatchers = 0;
         this.acceptedCommentId = null;
 
         if ("qna".equals(category) && request.question() != null) {
-            this.questionSolved = request.question().solved();
-            this.questionEnvironment = request.question().environment();
-            this.questionTried = request.question().tried();
+            this.questionSolved = true;
+            this.questionExpected = request.question().expected();
+            this.questionActual = request.question().actual();
+            this.questionReproductionSteps = new ArrayList<>(request.question().reproductionSteps());
             this.acceptedCommentId = parseId(request.question().acceptedCommentId());
         }
 
         if ("bug".equals(category) && request.bug() != null) {
             this.bugStatus = request.bug().status();
-            this.bugPriority = request.bug().priority();
-            this.bugAssignee = request.bug().assignee();
-            this.bugEnvironment = request.bug().environment();
             this.bugExpected = request.bug().expected();
             this.bugActual = request.bug().actual();
             this.bugReproductionSteps = new ArrayList<>(request.bug().reproductionSteps());
-            this.bugLabels = new ArrayList<>(request.bug().labels());
             this.bugWatchers = request.bug().watchers();
             this.acceptedCommentId = parseId(request.bug().acceptedCommentId());
         }
@@ -284,7 +265,9 @@ public class Post {
 
     public void setAcceptedCommentId(Long acceptedCommentId) {
         this.acceptedCommentId = acceptedCommentId;
-        this.questionSolved = acceptedCommentId != null;
+        if ("qna".equals(category)) {
+            this.questionSolved = true;
+        }
         this.updatedAt = Instant.now();
     }
 

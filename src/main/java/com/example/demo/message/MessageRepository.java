@@ -35,6 +35,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     long countBySenderAndRecipientAndReadAtIsNull(AppUser sender, AppUser recipient);
 
+    long countByRecipientAndReadAtIsNull(AppUser recipient);
+
     @Query("""
             select m from Message m
             join fetch m.sender

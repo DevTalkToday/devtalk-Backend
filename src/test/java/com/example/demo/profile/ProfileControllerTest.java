@@ -25,6 +25,13 @@ class ProfileControllerTest {
     }
 
     @Test
+    void bookmarksRequireBearerToken() throws Exception {
+        mvc.perform(get("/profile/me/bookmarks"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
     void updateProfileValidatesNickname() throws Exception {
         mvc.perform(patch("/profile/me")
                         .header("Authorization", "Bearer token")

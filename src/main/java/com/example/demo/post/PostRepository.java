@@ -15,6 +15,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     long countByAuthor(AppUser author);
 
+    List<Post> findByAuthorAndCategoryNotOrderByCreatedAtDesc(AppUser author, String category, Pageable pageable);
+
+    long countByAuthorAndCategoryNot(AppUser author, String category);
+
     @Query("""
             select p.author.id, count(p)
             from Post p
@@ -27,15 +31,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             value = """
                     select p from Post p
                     where (:categoriesEmpty = true or p.category in :categories)
+                      and (p.category <> 'talk' or (:viewerId is not null and p.author.id = :viewerId))
                       and (
                             :resolutionMode = 'ALL'
                          or (:resolutionMode = 'RESOLVED' and (
-                                (p.category = 'qna' and p.questionSolved = true)
+                                p.category = 'qna'
                              or (p.category = 'bug' and p.bugStatus in ('fixed', 'closed'))
                          ))
                          or (:resolutionMode = 'UNRESOLVED' and (
-                                (p.category = 'qna' and p.questionSolved = false)
-                             or (p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed')))
+                                p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed'))
                          ))
                          or (:resolutionMode = 'ANY_STATUS' and p.category in ('qna', 'bug'))
                       )
@@ -43,15 +47,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             countQuery = """
                     select count(p) from Post p
                     where (:categoriesEmpty = true or p.category in :categories)
+                      and (p.category <> 'talk' or (:viewerId is not null and p.author.id = :viewerId))
                       and (
                             :resolutionMode = 'ALL'
                          or (:resolutionMode = 'RESOLVED' and (
-                                (p.category = 'qna' and p.questionSolved = true)
+                                p.category = 'qna'
                              or (p.category = 'bug' and p.bugStatus in ('fixed', 'closed'))
                          ))
                          or (:resolutionMode = 'UNRESOLVED' and (
-                                (p.category = 'qna' and p.questionSolved = false)
-                             or (p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed')))
+                                p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed'))
                          ))
                          or (:resolutionMode = 'ANY_STATUS' and p.category in ('qna', 'bug'))
                       )
@@ -61,21 +65,22 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             @Param("categories") List<String> categories,
             @Param("categoriesEmpty") boolean categoriesEmpty,
             @Param("resolutionMode") String resolutionMode,
+            @Param("viewerId") Long viewerId,
             Pageable pageable
     );
 
     @Query("""
             select p from Post p
             where (:categoriesEmpty = true or p.category in :categories)
+              and (p.category <> 'talk' or (:viewerId is not null and p.author.id = :viewerId))
               and (
                     :resolutionMode = 'ALL'
                  or (:resolutionMode = 'RESOLVED' and (
-                        (p.category = 'qna' and p.questionSolved = true)
+                        p.category = 'qna'
                      or (p.category = 'bug' and p.bugStatus in ('fixed', 'closed'))
                  ))
                  or (:resolutionMode = 'UNRESOLVED' and (
-                        (p.category = 'qna' and p.questionSolved = false)
-                     or (p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed')))
+                        p.category = 'bug' and (p.bugStatus is null or p.bugStatus not in ('fixed', 'closed'))
                  ))
                  or (:resolutionMode = 'ANY_STATUS' and p.category in ('qna', 'bug'))
               )
@@ -83,6 +88,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findAllForListing(
             @Param("categories") List<String> categories,
             @Param("categoriesEmpty") boolean categoriesEmpty,
-            @Param("resolutionMode") String resolutionMode
+            @Param("resolutionMode") String resolutionMode,
+            @Param("viewerId") Long viewerId
     );
 }

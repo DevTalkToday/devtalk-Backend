@@ -25,6 +25,13 @@ class FriendControllerTest {
     }
 
     @Test
+    void receivedCountRequiresBearerToken() throws Exception {
+        mvc.perform(get("/friends/received-count"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
     void requestValidatesTargetUserId() throws Exception {
         mvc.perform(post("/friends/requests")
                         .header("Authorization", "Bearer token")
