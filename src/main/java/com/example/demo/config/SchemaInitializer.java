@@ -9,6 +9,14 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class SchemaInitializer implements CommandLineRunner {
+    private static final String INFORMATION_SCHEMA_COLUMNS_QUERY = """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND column_name = ?
+            """;
+
     private final JdbcTemplate jdbcTemplate;
 
     public SchemaInitializer(JdbcTemplate jdbcTemplate) {
@@ -25,6 +33,8 @@ public class SchemaInitializer implements CommandLineRunner {
         createPostBookmarksTable();
         createPostLikesTable();
         createPostCommentLikesTable();
+        ensurePostCounterColumns();
+        backfillPostInteractionCounts();
     }
 
     private void createCollectionTable(String tableName, String ownerColumn, String valueColumn) {
@@ -82,5 +92,71 @@ public class SchemaInitializer implements CommandLineRunner {
                     INDEX `idx_post_comment_likes_comment` (`comment_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """);
+    }
+
+    private void ensurePostCounterColumns() {
+        ensureColumnExists("posts", "like_count", "INT NOT NULL DEFAULT 0");
+        ensureColumnExists("posts", "bookmark_count", "INT NOT NULL DEFAULT 0");
+        ensureColumnExists("posts", "view_count", "INT NOT NULL DEFAULT 0");
+        ensureColumnExists("posts", "bug_watchers", "INT NOT NULL DEFAULT 0");
+        ensureColumnExists("posts", "question_solved", "BIT NOT NULL DEFAULT b'0'");
+        ensureColumnExists("post_comments", "like_count", "INT NOT NULL DEFAULT 0");
+
+        jdbcTemplate.update("UPDATE `posts` SET `like_count` = 0 WHERE `like_count` IS NULL");
+        jdbcTemplate.update("UPDATE `posts` SET `bookmark_count` = 0 WHERE `bookmark_count` IS NULL");
+        jdbcTemplate.update("UPDATE `posts` SET `view_count` = 0 WHERE `view_count` IS NULL");
+        jdbcTemplate.update("UPDATE `posts` SET `bug_watchers` = 0 WHERE `bug_watchers` IS NULL");
+        jdbcTemplate.update("UPDATE `posts` SET `question_solved` = b'0' WHERE `question_solved` IS NULL");
+        jdbcTemplate.update("UPDATE `post_comments` SET `like_count` = 0 WHERE `like_count` IS NULL");
+    }
+
+    private void backfillPostInteractionCounts() {
+        jdbcTemplate.update("""
+                UPDATE `posts` p
+                LEFT JOIN (
+                    SELECT `post_id`, COUNT(*) AS `like_count`
+                    FROM `post_likes`
+                    GROUP BY `post_id`
+                ) likes ON likes.`post_id` = p.`id`
+                SET p.`like_count` = COALESCE(likes.`like_count`, 0)
+                """);
+
+        jdbcTemplate.update("""
+                UPDATE `posts` p
+                LEFT JOIN (
+                    SELECT `post_id`, COUNT(*) AS `bookmark_count`
+                    FROM `post_bookmarks`
+                    GROUP BY `post_id`
+                ) bookmarks ON bookmarks.`post_id` = p.`id`
+                SET p.`bookmark_count` = COALESCE(bookmarks.`bookmark_count`, 0)
+                """);
+
+        jdbcTemplate.update("""
+                UPDATE `post_comments` c
+                LEFT JOIN (
+                    SELECT `comment_id`, COUNT(*) AS `like_count`
+                    FROM `post_comment_likes`
+                    GROUP BY `comment_id`
+                ) likes ON likes.`comment_id` = c.`id`
+                SET c.`like_count` = COALESCE(likes.`like_count`, 0)
+                """);
+    }
+
+    private void ensureColumnExists(String tableName, String columnName, String columnDefinition) {
+        Integer count = jdbcTemplate.queryForObject(
+                INFORMATION_SCHEMA_COLUMNS_QUERY,
+                Integer.class,
+                tableName,
+                columnName
+        );
+
+        if (count != null && count > 0) {
+            return;
+        }
+
+        jdbcTemplate.execute("""
+                ALTER TABLE `%s`
+                ADD COLUMN `%s` %s
+                """.formatted(tableName, columnName, columnDefinition));
     }
 }
