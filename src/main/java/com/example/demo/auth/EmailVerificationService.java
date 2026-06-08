@@ -1,5 +1,6 @@
 package com.example.demo.auth;
 
+import com.example.demo.config.CorsOriginUtils;
 import com.example.demo.auth.dto.EmailVerificationConfirmRequest;
 import com.example.demo.auth.dto.EmailVerificationConfirmResponse;
 import com.example.demo.auth.dto.EmailVerificationRequest;
@@ -42,7 +43,7 @@ public class EmailVerificationService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.auth.email-verification.expose-debug-code:false}") boolean exposeDebugCode,
-            @Value("${app.cors.allowed-origin:http://localhost:3000}") String allowedOrigin,
+            @Value("${app.cors.allowed-origins:${CORS_ALLOWED_ORIGIN:http://localhost:3000}}") String configuredAllowedOrigins,
             ObjectProvider<JavaMailSender> mailSenderProvider,
             @Value("${app.auth.email-verification.from:}") String verificationFromAddress
     ) {
@@ -51,7 +52,7 @@ public class EmailVerificationService {
                 userRepository,
                 passwordEncoder,
                 exposeDebugCode,
-                allowedOrigin,
+                configuredAllowedOrigins,
                 mailSenderProvider.getIfAvailable(),
                 verificationFromAddress
         );
@@ -62,7 +63,7 @@ public class EmailVerificationService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             boolean exposeDebugCode,
-            String allowedOrigin,
+            String configuredAllowedOrigins,
             JavaMailSender mailSender,
             String verificationFromAddress
     ) {
@@ -70,9 +71,7 @@ public class EmailVerificationService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.exposeDebugCode = exposeDebugCode;
-        this.localDevelopmentOrigin = allowedOrigin.contains("localhost")
-                || allowedOrigin.contains("127.0.0.1")
-                || allowedOrigin.contains("[::1]");
+        this.localDevelopmentOrigin = CorsOriginUtils.containsLocalDevelopmentOrigin(configuredAllowedOrigins);
         this.mailSender = mailSender;
         this.verificationFromAddress = verificationFromAddress == null ? "" : verificationFromAddress.trim();
     }

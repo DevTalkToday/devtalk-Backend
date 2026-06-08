@@ -131,6 +131,30 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void requestCodeReturnsDebugCodeWhenMultipleOriginsIncludeLocalhost() {
+        EmailVerificationService service = new EmailVerificationService(
+                emailVerificationRepository,
+                userRepository,
+                passwordEncoder,
+                false,
+                "https://devtalk.kr,http://localhost:3000,https://*.vercel.app",
+                (JavaMailSender) null,
+                ""
+        );
+
+        when(userRepository.existsByUsernameIgnoreCase("user@example.com")).thenReturn(false);
+        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+
+        EmailVerificationRequestResponse response = service.requestCode(new EmailVerificationRequest("user@example.com"));
+
+        assertEquals(false, response.emailSent());
+        assertNotNull(response.debugCode());
+        assertEquals(6, response.debugCode().length());
+    }
+
+    @Test
     void requestCodeFailsWhenMailSenderIsMissingOutsideLocalhost() {
         EmailVerificationService service = new EmailVerificationService(
                 emailVerificationRepository,

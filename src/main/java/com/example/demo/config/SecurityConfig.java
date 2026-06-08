@@ -17,8 +17,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfig {
-    @Value("${app.cors.allowed-origin:http://localhost:3000}")
-    private String allowedOrigin;
+    private final List<String> allowedOriginPatterns;
+
+    public SecurityConfig(
+            @Value("${app.cors.allowed-origins:${CORS_ALLOWED_ORIGIN:http://localhost:3000}}") String configuredAllowedOrigins
+    ) {
+        this.allowedOriginPatterns = CorsOriginUtils.parseAllowedOrigins(configuredAllowedOrigins);
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -45,10 +50,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(allowedOrigin));
+        configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
