@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,10 +64,32 @@ class PostControllerTest {
     }
 
     @Test
+    void likeRequiresBearerToken() throws Exception {
+        mvc.perform(post("/posts/10/like"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+
+        mvc.perform(delete("/posts/10/like"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
+    void commentLikeRequiresBearerToken() throws Exception {
+        mvc.perform(post("/posts/10/comments/20/like"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+
+        mvc.perform(delete("/posts/10/comments/20/like"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
+
+    @Test
     void getPostAllowsAnonymousViewer() throws Exception {
         PostResponse response = new PostResponse(
                 "10", "Title", "Body", "Body", "bug", null, null, null,
-                0, 0, 0, false, 0, List.of(), List.of(), List.of(), null, null, false, false, false
+                0, 0, 0, false, false, 0, List.of(), List.of(), List.of(), null, null, false, false, false
         );
         when(postService.getPost(10L, false, null)).thenReturn(response);
 

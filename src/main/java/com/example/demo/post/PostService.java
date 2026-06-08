@@ -37,17 +37,23 @@ public class PostService {
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
     private final PostBookmarkRepository bookmarkRepository;
+    private final PostLikeRepository likeRepository;
+    private final PostCommentLikeRepository commentLikeRepository;
     private final NotificationService notificationService;
 
     public PostService(
             PostRepository postRepository,
             PostCommentRepository commentRepository,
             PostBookmarkRepository bookmarkRepository,
+            PostLikeRepository likeRepository,
+            PostCommentLikeRepository commentLikeRepository,
             NotificationService notificationService
     ) {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.bookmarkRepository = bookmarkRepository;
+        this.likeRepository = likeRepository;
+        this.commentLikeRepository = commentLikeRepository;
         this.notificationService = notificationService;
     }
 
@@ -132,6 +138,8 @@ public class PostService {
     public void deletePost(Long id, AppUser actor) {
         Post post = findPost(id);
         requirePostDeleter(post, actor);
+        commentLikeRepository.deleteByCommentPost(post);
+        likeRepository.deleteByPost(post);
         bookmarkRepository.deleteByPost(post);
         postRepository.delete(post);
     }
@@ -157,6 +165,32 @@ public class PostService {
         bookmarkRepository.findByPostAndUser(post, actor).ifPresent((bookmark) -> {
             bookmarkRepository.delete(bookmark);
             post.decrementBookmarkCount();
+        });
+
+        return toResponse(post, actor);
+    }
+
+    @Transactional
+    public PostResponse likePost(Long id, AppUser actor) {
+        Post post = findPost(id);
+        requireReadablePost(post, actor);
+
+        if (likeRepository.findByPostAndUser(post, actor).isEmpty()) {
+            likeRepository.save(new PostLike(actor, post));
+            post.incrementLikeCount();
+        }
+
+        return toResponse(post, actor);
+    }
+
+    @Transactional
+    public PostResponse unlikePost(Long id, AppUser actor) {
+        Post post = findPost(id);
+        requireReadablePost(post, actor);
+
+        likeRepository.findByPostAndUser(post, actor).ifPresent((like) -> {
+            likeRepository.delete(like);
+            post.decrementLikeCount();
         });
 
         return toResponse(post, actor);
@@ -192,10 +226,39 @@ public class PostService {
         if (!canDeleteComment(actor, comment, post)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMENT_DELETE_FORBIDDEN");
         }
+        commentLikeRepository.deleteByComment(comment);
         post.removeComment(comment);
         if (commentId.equals(post.getAcceptedCommentId())) {
             post.setAcceptedCommentId(null);
         }
+        return toResponse(post, actor);
+    }
+
+    @Transactional
+    public PostResponse likeComment(Long postId, Long commentId, AppUser actor) {
+        Post post = findPost(postId);
+        requireReadablePost(post, actor);
+        PostComment comment = findComment(postId, commentId);
+
+        if (commentLikeRepository.findByCommentAndUser(comment, actor).isEmpty()) {
+            commentLikeRepository.save(new PostCommentLike(actor, comment));
+            comment.incrementLikeCount();
+        }
+
+        return toResponse(post, actor);
+    }
+
+    @Transactional
+    public PostResponse unlikeComment(Long postId, Long commentId, AppUser actor) {
+        Post post = findPost(postId);
+        requireReadablePost(post, actor);
+        PostComment comment = findComment(postId, commentId);
+
+        commentLikeRepository.findByCommentAndUser(comment, actor).ifPresent((like) -> {
+            commentLikeRepository.delete(like);
+            comment.decrementLikeCount();
+        });
+
         return toResponse(post, actor);
     }
 
@@ -240,6 +303,10 @@ public class PostService {
         String content = trim(request == null ? null : request.content());
         String category = normalizeLower(request == null ? null : request.category());
         if (!CATEGORIES.contains(category)) category = existing == null ? "talk" : existing.getCategory();
+        String bugStatus = normalizeLower(request == null || request.bug() == null ? null : request.bug().status());
+        if ("bug".equals(category) && "closed".equals(bugStatus)) {
+            category = "qna";
+        }
 
         if (title.isBlank() || content.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "TITLE_AND_CONTENT_REQUIRED");
@@ -250,6 +317,14 @@ public class PostService {
 
         if ("qna".equals(category)) {
             PostPayload.QuestionPayload source = request.question();
+            if (source == null && request.bug() != null) {
+                source = new PostPayload.QuestionPayload(
+                        request.bug().expected(),
+                        request.bug().actual(),
+                        request.bug().reproductionSteps(),
+                        request.bug().acceptedCommentId()
+                );
+            }
             question = new PostPayload.QuestionPayload(
                     clamp(source == null ? null : source.expected(), 240),
                     clamp(source == null ? null : source.actual(), 240),
@@ -260,9 +335,8 @@ public class PostService {
 
         if ("bug".equals(category)) {
             PostPayload.BugPayload source = request.bug();
-            String status = normalizeLower(source == null ? null : source.status());
             bug = new PostPayload.BugPayload(
-                    BUG_STATUSES.contains(status) ? status : "open",
+                    BUG_STATUSES.contains(bugStatus) ? bugStatus : "open",
                     clamp(source == null ? null : source.expected(), 240),
                     clamp(source == null ? null : source.actual(), 240),
                     cleanList(source == null ? null : source.reproductionSteps(), 8),
@@ -329,6 +403,8 @@ public class PostService {
         boolean canManagePost = canManagePost(viewer, post);
         boolean canDeletePost = canManagePost || AdminAccess.isAdmin(viewer);
         boolean canAcceptComments = canManagePost && !"talk".equals(post.getCategory());
+        boolean liked = isLiked(post, viewer);
+        Set<Long> likedCommentIds = likedCommentIds(viewer, post.getComments());
 
         return new PostResponse(
                 String.valueOf(post.getId()),
@@ -343,10 +419,11 @@ public class PostService {
                 post.getLikeCount(),
                 post.getBookmarkCount(),
                 isBookmarked(post, viewer),
+                liked,
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
-                post.getComments().stream().map(comment -> toCommentResponse(comment, post, viewer, canAcceptComments)).toList(),
+                post.getComments().stream().map(comment -> toCommentResponse(comment, post, viewer, canAcceptComments, likedCommentIds.contains(comment.getId()))).toList(),
                 toQuestionResponse(post),
                 toBugResponse(post),
                 canManagePost,
@@ -355,7 +432,7 @@ public class PostService {
         );
     }
 
-    private PostSummaryResponse toSummaryResponse(Post post, boolean bookmarked) {
+    private PostSummaryResponse toSummaryResponse(Post post, boolean bookmarked, boolean liked) {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
@@ -368,6 +445,7 @@ public class PostService {
                 post.getLikeCount(),
                 post.getBookmarkCount(),
                 bookmarked,
+                liked,
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
@@ -376,7 +454,7 @@ public class PostService {
         );
     }
 
-    private PostCommentResponse toCommentResponse(PostComment comment, Post post, AppUser viewer, boolean canAcceptComments) {
+    private PostCommentResponse toCommentResponse(PostComment comment, Post post, AppUser viewer, boolean canAcceptComments, boolean liked) {
         boolean canEdit = canEditComment(viewer, comment);
         return new PostCommentResponse(
                 String.valueOf(comment.getId()),
@@ -385,6 +463,7 @@ public class PostService {
                 comment.getCreatedAt(),
                 comment.getUpdatedAt(),
                 comment.getLikeCount(),
+                liked,
                 post.getAcceptedCommentId() != null && post.getAcceptedCommentId().equals(comment.getId()),
                 canEdit,
                 canDeleteComment(viewer, comment, post),
@@ -605,8 +684,9 @@ public class PostService {
 
     private List<PostSummaryResponse> toSummaryResponses(List<Post> posts, AppUser viewer) {
         Set<Long> bookmarkedIds = bookmarkedPostIds(viewer, posts);
+        Set<Long> likedIds = likedPostIds(viewer, posts);
         return posts.stream()
-                .map(post -> toSummaryResponse(post, bookmarkedIds.contains(post.getId())))
+                .map(post -> toSummaryResponse(post, bookmarkedIds.contains(post.getId()), likedIds.contains(post.getId())))
                 .toList();
     }
 
@@ -624,6 +704,33 @@ public class PostService {
     private boolean isBookmarked(Post post, AppUser viewer) {
         if (viewer == null) return false;
         return bookmarkRepository.existsByPostAndUser(post, viewer);
+    }
+
+    private boolean isLiked(Post post, AppUser viewer) {
+        if (viewer == null) return false;
+        return likeRepository.existsByPostAndUser(post, viewer);
+    }
+
+    private Set<Long> likedPostIds(AppUser viewer, List<Post> posts) {
+        if (viewer == null || posts.isEmpty()) {
+            return Set.of();
+        }
+
+        List<Long> postIds = posts.stream()
+                .map(Post::getId)
+                .toList();
+        return new HashSet<>(likeRepository.findLikedPostIds(viewer, postIds));
+    }
+
+    private Set<Long> likedCommentIds(AppUser viewer, List<PostComment> comments) {
+        if (viewer == null || comments.isEmpty()) {
+            return Set.of();
+        }
+
+        List<Long> commentIds = comments.stream()
+                .map(PostComment::getId)
+                .toList();
+        return new HashSet<>(commentLikeRepository.findLikedCommentIds(viewer, commentIds));
     }
 
     private boolean matchesKeywords(Post post, List<String> keywords, String match) {

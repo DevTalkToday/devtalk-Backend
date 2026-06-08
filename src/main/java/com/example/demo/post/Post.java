@@ -150,6 +150,14 @@ public class Post {
         return bookmarkCount;
     }
 
+    public void incrementLikeCount() {
+        this.likeCount += 1;
+    }
+
+    public void decrementLikeCount() {
+        this.likeCount = Math.max(0, this.likeCount - 1);
+    }
+
     public void incrementBookmarkCount() {
         this.bookmarkCount += 1;
     }

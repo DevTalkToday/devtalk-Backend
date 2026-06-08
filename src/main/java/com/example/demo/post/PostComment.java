@@ -78,6 +78,14 @@ public class PostComment {
         return likeCount;
     }
 
+    public void incrementLikeCount() {
+        this.likeCount += 1;
+    }
+
+    public void decrementLikeCount() {
+        this.likeCount = Math.max(0, this.likeCount - 1);
+    }
+
     public void updateBody(String body) {
         this.body = body;
         this.updatedAt = Instant.now();

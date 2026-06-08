@@ -10,6 +10,7 @@ import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostAuthorResponse;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
+import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostListResponse;
 import com.example.demo.post.PostRepository;
 import com.example.demo.post.PostSummaryResponse;
@@ -34,17 +35,20 @@ public class ProfileService {
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
     private final PostBookmarkRepository bookmarkRepository;
+    private final PostLikeRepository likeRepository;
 
     public ProfileService(
             UserRepository userRepository,
             PostRepository postRepository,
             PostCommentRepository commentRepository,
-            PostBookmarkRepository bookmarkRepository
+            PostBookmarkRepository bookmarkRepository,
+            PostLikeRepository likeRepository
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.bookmarkRepository = bookmarkRepository;
+        this.likeRepository = likeRepository;
     }
 
     @Transactional(readOnly = true)
@@ -117,9 +121,12 @@ public class ProfileService {
             );
         }
 
-        List<PostSummaryResponse> items = pageResult.getContent().stream()
+        List<Post> posts = pageResult.getContent().stream()
                 .map(PostBookmark::getPost)
-                .map(post -> toPostSummaryResponse(post, true))
+                .toList();
+        Set<Long> likedIds = likedPostIds(user, posts);
+        List<PostSummaryResponse> items = posts.stream()
+                .map(post -> toPostSummaryResponse(post, true, likedIds.contains(post.getId())))
                 .toList();
 
         return new PostListResponse(items, new PostListResponse.PageInfo(
@@ -160,7 +167,7 @@ public class ProfileService {
         List<PostSummaryResponse> items = postRepository
                 .findByAuthorAndCategoryNotOrderByCreatedAtDesc(user, PRIVATE_POST_CATEGORY, PageRequest.of(safePage - 1, safeLimit))
                 .stream()
-                .map(post -> toPostSummaryResponse(post, false))
+                .map(post -> toPostSummaryResponse(post, false, false))
                 .toList();
 
         return new PostListResponse(items, new PostListResponse.PageInfo(
@@ -261,7 +268,7 @@ public class ProfileService {
         );
     }
 
-    private PostSummaryResponse toPostSummaryResponse(Post post, boolean bookmarked) {
+    private PostSummaryResponse toPostSummaryResponse(Post post, boolean bookmarked, boolean liked) {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
@@ -274,6 +281,7 @@ public class ProfileService {
                 post.getLikeCount(),
                 post.getBookmarkCount(),
                 bookmarked,
+                liked,
                 post.getViewCount(),
                 List.copyOf(post.getTags()),
                 List.copyOf(post.getMajors()),
@@ -378,14 +386,23 @@ public class ProfileService {
 
     private List<PostSummaryResponse> toPostSummaryResponses(List<Post> posts, AppUser viewer) {
         Set<Long> bookmarkedIds = bookmarkedPostIds(viewer, posts);
+        Set<Long> likedIds = likedPostIds(viewer, posts);
         return posts.stream()
-                .map(post -> toPostSummaryResponse(post, bookmarkedIds.contains(post.getId())))
+                .map(post -> toPostSummaryResponse(post, bookmarkedIds.contains(post.getId()), likedIds.contains(post.getId())))
                 .toList();
     }
 
     private Set<Long> bookmarkedPostIds(AppUser viewer, List<Post> posts) {
         if (viewer == null || posts.isEmpty()) return Set.of();
         return Set.copyOf(bookmarkRepository.findBookmarkedPostIds(
+                viewer,
+                posts.stream().map(Post::getId).toList()
+        ));
+    }
+
+    private Set<Long> likedPostIds(AppUser viewer, List<Post> posts) {
+        if (viewer == null || posts.isEmpty()) return Set.of();
+        return Set.copyOf(likeRepository.findLikedPostIds(
                 viewer,
                 posts.stream().map(Post::getId).toList()
         ));

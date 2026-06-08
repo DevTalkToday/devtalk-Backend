@@ -23,6 +23,8 @@ public class SchemaInitializer implements CommandLineRunner {
         createCollectionTable("post_question_reproduction_steps", "post_id", "question_reproduction_steps");
         createCollectionTable("post_bug_reproduction_steps", "post_id", "bug_reproduction_steps");
         createPostBookmarksTable();
+        createPostLikesTable();
+        createPostCommentLikesTable();
     }
 
     private void createCollectionTable(String tableName, String ownerColumn, String valueColumn) {
@@ -48,6 +50,36 @@ public class SchemaInitializer implements CommandLineRunner {
                     UNIQUE KEY `uk_post_bookmarks_user_post` (`user_id`, `post_id`),
                     INDEX `idx_post_bookmarks_user_created` (`user_id`, `created_at`),
                     INDEX `idx_post_bookmarks_post` (`post_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """);
+    }
+
+    private void createPostLikesTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS `post_likes` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
+                    `user_id` BIGINT NOT NULL,
+                    `post_id` BIGINT NOT NULL,
+                    `created_at` DATETIME(6) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_post_likes_user_post` (`user_id`, `post_id`),
+                    INDEX `idx_post_likes_user_created` (`user_id`, `created_at`),
+                    INDEX `idx_post_likes_post` (`post_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """);
+    }
+
+    private void createPostCommentLikesTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS `post_comment_likes` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
+                    `user_id` BIGINT NOT NULL,
+                    `comment_id` BIGINT NOT NULL,
+                    `created_at` DATETIME(6) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_post_comment_likes_user_comment` (`user_id`, `comment_id`),
+                    INDEX `idx_post_comment_likes_user_created` (`user_id`, `created_at`),
+                    INDEX `idx_post_comment_likes_comment` (`comment_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """);
     }

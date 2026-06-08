@@ -21,7 +21,9 @@ class PostServiceTest {
     private final PostRepository postRepository = mock(PostRepository.class);
     private final PostCommentRepository commentRepository = mock(PostCommentRepository.class);
     private final PostBookmarkRepository bookmarkRepository = mock(PostBookmarkRepository.class);
-    private final PostService service = new PostService(postRepository, commentRepository, bookmarkRepository, mock(NotificationService.class));
+    private final PostLikeRepository likeRepository = mock(PostLikeRepository.class);
+    private final PostCommentLikeRepository commentLikeRepository = mock(PostCommentLikeRepository.class);
+    private final PostService service = new PostService(postRepository, commentRepository, bookmarkRepository, likeRepository, commentLikeRepository, mock(NotificationService.class));
 
     @Test
     void createPostRejectsBlankTitleOrContent() {
@@ -113,6 +115,39 @@ class PostServiceTest {
     }
 
     @Test
+    void updateClosedBugPostConvertsToQnaAndKeepsSharedFields() {
+        AppUser author = user(1L, "author@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+
+        PostPayload payload = new PostPayload(
+                "Resolved login issue",
+                "body",
+                "bug",
+                List.of("auth"),
+                List.of("backend"),
+                null,
+                new PostPayload.BugPayload(
+                        "closed",
+                        "User should stay signed in after refresh.",
+                        "Session was cleared after refresh.",
+                        List.of("Login", "Refresh the page", "Observe logout"),
+                        3,
+                        "77"
+                )
+        );
+
+        PostResponse response = service.updatePost(100L, payload, author);
+
+        assertEquals("qna", response.category());
+        assertTrue(response.question().solved());
+        assertEquals("User should stay signed in after refresh.", response.question().expected());
+        assertEquals("Session was cleared after refresh.", response.question().actual());
+        assertEquals(List.of("Login", "Refresh the page", "Observe logout"), response.question().reproductionSteps());
+        assertEquals("77", response.question().acceptedCommentId());
+    }
+
+    @Test
     void createCommentHidesPrivatePostFromNonAuthor() {
         AppUser author = user(1L, "author@example.com");
         AppUser viewer = user(2L, "viewer@example.com");
@@ -143,6 +178,80 @@ class PostServiceTest {
         assertEquals(1, response.bookmarkCount());
         assertTrue(response.bookmarked());
         verify(bookmarkRepository).save(any(PostBookmark.class));
+    }
+
+    @Test
+    void likePostCreatesLikeAndMarksResponse() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(likeRepository.findByPostAndUser(post, viewer)).thenReturn(Optional.empty());
+        when(likeRepository.existsByPostAndUser(post, viewer)).thenReturn(true);
+
+        PostResponse response = service.likePost(100L, viewer);
+
+        assertEquals(1, response.likeCount());
+        assertTrue(response.liked());
+        verify(likeRepository).save(any(PostLike.class));
+    }
+
+    @Test
+    void unlikePostRemovesLikeAndClearsResponse() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        PostLike like = withId(new PostLike(viewer, post), 200L);
+        post.incrementLikeCount();
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(likeRepository.findByPostAndUser(post, viewer)).thenReturn(Optional.of(like));
+        when(likeRepository.existsByPostAndUser(post, viewer)).thenReturn(false);
+
+        PostResponse response = service.unlikePost(100L, viewer);
+
+        assertEquals(0, response.likeCount());
+        assertEquals(false, response.liked());
+        verify(likeRepository).delete(like);
+    }
+
+    @Test
+    void likeCommentCreatesLikeAndMarksResponse() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        PostComment comment = withId(new PostComment(post, author, "comment"), 200L);
+        post.addComment(comment);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(commentRepository.findByIdAndPostId(200L, 100L)).thenReturn(Optional.of(comment));
+        when(commentLikeRepository.findByCommentAndUser(comment, viewer)).thenReturn(Optional.empty());
+        when(commentLikeRepository.findLikedCommentIds(viewer, List.of(200L))).thenReturn(List.of(200L));
+
+        PostResponse response = service.likeComment(100L, 200L, viewer);
+
+        assertEquals(1, response.comments().getFirst().likeCount());
+        assertTrue(response.comments().getFirst().liked());
+        verify(commentLikeRepository).save(any(PostCommentLike.class));
+    }
+
+    @Test
+    void unlikeCommentRemovesLikeAndClearsResponse() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        PostComment comment = withId(new PostComment(post, author, "comment"), 200L);
+        PostCommentLike like = withId(new PostCommentLike(viewer, comment), 300L);
+        comment.incrementLikeCount();
+        post.addComment(comment);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(commentRepository.findByIdAndPostId(200L, 100L)).thenReturn(Optional.of(comment));
+        when(commentLikeRepository.findByCommentAndUser(comment, viewer)).thenReturn(Optional.of(like));
+        when(commentLikeRepository.findLikedCommentIds(viewer, List.of(200L))).thenReturn(List.of());
+
+        PostResponse response = service.unlikeComment(100L, 200L, viewer);
+
+        assertEquals(0, response.comments().getFirst().likeCount());
+        assertEquals(false, response.comments().getFirst().liked());
+        verify(commentLikeRepository).delete(like);
     }
 
     private static AppUser user(Long id, String email) {

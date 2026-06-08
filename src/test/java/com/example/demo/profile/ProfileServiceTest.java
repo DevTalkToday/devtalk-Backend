@@ -13,6 +13,7 @@ import com.example.demo.post.PostBookmark;
 import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
+import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostListResponse;
 import com.example.demo.post.PostRepository;
 import java.util.List;
@@ -25,7 +26,8 @@ class ProfileServiceTest {
     private final PostRepository postRepository = mock(PostRepository.class);
     private final PostCommentRepository commentRepository = mock(PostCommentRepository.class);
     private final PostBookmarkRepository bookmarkRepository = mock(PostBookmarkRepository.class);
-    private final ProfileService service = new ProfileService(userRepository, postRepository, commentRepository, bookmarkRepository);
+    private final PostLikeRepository likeRepository = mock(PostLikeRepository.class);
+    private final ProfileService service = new ProfileService(userRepository, postRepository, commentRepository, bookmarkRepository, likeRepository);
 
     @Test
     void publicProfileExcludesPrivatePostAndCommentCounts() {

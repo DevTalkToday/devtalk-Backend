@@ -99,6 +99,24 @@ public class PostController {
         return postService.unbookmarkPost(id, user);
     }
 
+    @PostMapping("/{id}/like")
+    public PostResponse likePost(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.likePost(id, user);
+    }
+
+    @DeleteMapping("/{id}/like")
+    public PostResponse unlikePost(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.unlikePost(id, user);
+    }
+
     @PostMapping("/{id}/comments")
     public ResponseEntity<PostResponse> createComment(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -139,6 +157,26 @@ public class PostController {
     ) {
         AppUser user = authService.authenticate(readBearerToken(authorization));
         return postService.deleteComment(id, commentId, user);
+    }
+
+    @PostMapping("/{id}/comments/{commentId}/like")
+    public PostResponse likeComment(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id,
+            @PathVariable Long commentId
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.likeComment(id, commentId, user);
+    }
+
+    @DeleteMapping("/{id}/comments/{commentId}/like")
+    public PostResponse unlikeComment(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @PathVariable Long id,
+            @PathVariable Long commentId
+    ) {
+        AppUser user = authService.authenticate(readBearerToken(authorization));
+        return postService.unlikeComment(id, commentId, user);
     }
 
     private AppUser resolveViewer(String authorization) {

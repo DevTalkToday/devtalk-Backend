@@ -12,6 +12,8 @@ import com.example.demo.post.Post;
 import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
+import com.example.demo.post.PostCommentLikeRepository;
+import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostRepository;
 import com.example.demo.report.ReportRepository;
 import com.example.demo.settings.NotificationPreferenceRepository;
@@ -33,6 +35,8 @@ public class AdminService {
     private final PostRepository postRepository;
     private final PostCommentRepository commentRepository;
     private final PostBookmarkRepository postBookmarkRepository;
+    private final PostCommentLikeRepository postCommentLikeRepository;
+    private final PostLikeRepository postLikeRepository;
     private final AuthTokenRepository authTokenRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
     private final FriendshipRepository friendshipRepository;
@@ -46,6 +50,8 @@ public class AdminService {
             PostRepository postRepository,
             PostCommentRepository commentRepository,
             PostBookmarkRepository postBookmarkRepository,
+            PostCommentLikeRepository postCommentLikeRepository,
+            PostLikeRepository postLikeRepository,
             AuthTokenRepository authTokenRepository,
             OAuthAccountRepository oAuthAccountRepository,
             FriendshipRepository friendshipRepository,
@@ -58,6 +64,8 @@ public class AdminService {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.postBookmarkRepository = postBookmarkRepository;
+        this.postCommentLikeRepository = postCommentLikeRepository;
+        this.postLikeRepository = postLikeRepository;
         this.authTokenRepository = authTokenRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
         this.friendshipRepository = friendshipRepository;
@@ -115,6 +123,8 @@ public class AdminService {
         oAuthAccountRepository.deleteByUser(target);
         notificationPreferenceRepository.deleteByUser(target);
         postBookmarkRepository.deleteByUser(target);
+        postCommentLikeRepository.deleteByUser(target);
+        postLikeRepository.deleteByUser(target);
         notificationRepository.deleteByRecipientOrActor(target, target);
         messageRepository.deleteBySenderOrRecipient(target, target);
         friendshipRepository.deleteByRequesterOrAddressee(target, target);
@@ -128,6 +138,7 @@ public class AdminService {
         for (PostComment comment : comments) {
             Post post = comment.getPost();
             reportRepository.deleteByTargetTypeAndTargetId("comment", String.valueOf(comment.getId()));
+            postCommentLikeRepository.deleteByComment(comment);
             if (post.getAcceptedCommentId() != null && post.getAcceptedCommentId().equals(comment.getId())) {
                 post.setAcceptedCommentId(null);
             }
@@ -139,6 +150,9 @@ public class AdminService {
         List<Post> posts = postRepository.findByAuthor(target);
         for (Post post : posts) {
             reportRepository.deleteByTargetTypeAndTargetId("post", String.valueOf(post.getId()));
+            postCommentLikeRepository.deleteByCommentPost(post);
+            postLikeRepository.deleteByPost(post);
+            postBookmarkRepository.deleteByPost(post);
             for (PostComment comment : List.copyOf(post.getComments())) {
                 reportRepository.deleteByTargetTypeAndTargetId("comment", String.valueOf(comment.getId()));
             }
