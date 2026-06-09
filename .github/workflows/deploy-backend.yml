@@ -43,9 +43,11 @@ jobs:
           cd ~/devtalk/deploy/gsmsv
           bash start.sh
 
+          verified=0
           for attempt in 1 2 3 4 5 6; do
             if bash verify.sh; then
-              exit 0
+              verified=1
+              break
             fi
 
             if [ "$attempt" -lt 6 ]; then
@@ -54,6 +56,10 @@ jobs:
             fi
           done
 
-          echo "Deployment verification failed after retries."
-          exit 1
+          if [ "$verified" -eq 1 ]; then
+            echo "Deployment verification succeeded."
+          else
+            echo "Deployment verification failed after retries."
+            exit 1
+          fi
           EOF
