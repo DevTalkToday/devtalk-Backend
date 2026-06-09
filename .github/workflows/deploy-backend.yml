@@ -17,10 +17,16 @@ jobs:
     steps:
       - name: Configure SSH
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VM_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VM_KNOWN_HOSTS }}" | tr -d '\r' > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.VM_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/known_hosts ~/.ssh/id_ed25519
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null 2>&1; then
+            echo "VM_SSH_KEY secret is invalid. Paste the exact contents of ~/.ssh/devtalk_vm_deploy and use a key without a passphrase."
+            exit 1
+          fi
 
       - name: Deploy on VM
         env:
@@ -28,7 +34,7 @@ jobs:
           VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
-          ssh -p "$VM_PORT" "$VM_USER@$VM_HOST" "
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "$VM_PORT" "$VM_USER@$VM_HOST" "
             set -euo pipefail
             cd ~/devtalk/devtalk-backend/demo
             git fetch origin
