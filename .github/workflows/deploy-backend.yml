@@ -1,0 +1,41 @@
+name: Deploy Backend To VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend-vm
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VM_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Deploy on VM
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          ssh -p "$VM_PORT" "$VM_USER@$VM_HOST" "
+            set -euo pipefail
+            cd ~/devtalk/devtalk-backend/demo
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+            cd ~/devtalk/deploy/gsmsv
+            bash start.sh
+            sleep 15
+            bash verify.sh
+          "
