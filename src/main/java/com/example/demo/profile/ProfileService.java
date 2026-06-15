@@ -10,6 +10,7 @@ import com.example.demo.post.PostBookmarkRepository;
 import com.example.demo.post.PostAuthorResponse;
 import com.example.demo.post.PostComment;
 import com.example.demo.post.PostCommentRepository;
+import com.example.demo.post.PostContentText;
 import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostListResponse;
 import com.example.demo.post.PostRepository;
@@ -272,7 +273,7 @@ public class ProfileService {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
-                createExcerpt(post.getContent()),
+                PostContentText.createExcerpt(post.getContent()),
                 post.getCategory(),
                 toAuthorResponse(post.getAuthor()),
                 post.getCreatedAt(),
@@ -369,11 +370,6 @@ public class ProfileService {
 
     private static int safePage(int page, int totalPages) {
         return Math.min(Math.max(page, 1), totalPages);
-    }
-
-    private static String createExcerpt(String content) {
-        String normalized = trim(content).replaceAll("\\s+", " ");
-        return normalized.length() > 150 ? normalized.substring(0, 150) : normalized;
     }
 
     private static String nullToBlank(String value) {

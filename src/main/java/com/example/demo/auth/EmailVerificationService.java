@@ -26,8 +26,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class EmailVerificationService {
     private static final Logger logger = LoggerFactory.getLogger(EmailVerificationService.class);
     private static final Duration CODE_TTL = Duration.ofMinutes(10);
+    private static final Duration REQUEST_COOLDOWN = Duration.ofSeconds(60);
+    private static final int MAX_CONFIRM_ATTEMPTS = 5;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String SEND_FAILURE_REASON = "Failed to send verification email";
+    private static final String REQUEST_THROTTLED_REASON = "Email verification request is too frequent";
 
     private final EmailVerificationRepository emailVerificationRepository;
     private final UserRepository userRepository;
@@ -80,18 +83,27 @@ public class EmailVerificationService {
     public EmailVerificationRequestResponse requestCode(EmailVerificationRequest request) {
         String email = normalizeEmail(request.email());
         rejectIfRegistered(email);
-        emailVerificationRepository.deleteByExpiresAtBefore(Instant.now());
+        Instant now = Instant.now();
+        emailVerificationRepository.deleteByExpiresAtBefore(now);
+
+        EmailVerification existingVerification = emailVerificationRepository.findByEmailIgnoreCase(email).orElse(null);
+        if (existingVerification != null
+                && !existingVerification.isExpired(now)
+                && existingVerification.wasRequestedRecently(now, REQUEST_COOLDOWN)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, REQUEST_THROTTLED_REASON);
+        }
 
         String code = randomCode();
-        Instant expiresAt = Instant.now().plus(CODE_TTL);
+        Instant expiresAt = now.plus(CODE_TTL);
         String codeHash = passwordEncoder.encode(code);
 
-        EmailVerification verification = emailVerificationRepository.findByEmailIgnoreCase(email)
-                .map(existing -> {
-                    existing.renew(codeHash, expiresAt);
-                    return existing;
-                })
-                .orElseGet(() -> new EmailVerification(email, codeHash, expiresAt));
+        EmailVerification verification;
+        if (existingVerification != null) {
+            existingVerification.renew(codeHash, expiresAt);
+            verification = existingVerification;
+        } else {
+            verification = new EmailVerification(email, codeHash, expiresAt);
+        }
 
         emailVerificationRepository.save(verification);
 
@@ -123,10 +135,20 @@ public class EmailVerificationService {
         Instant now = Instant.now();
         if (verification.isExpired(now)) {
             emailVerificationRepository.delete(verification);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email verification code expired");
+            throw expiredVerificationCode();
+        }
+
+        if (verification.getFailedAttempts() >= MAX_CONFIRM_ATTEMPTS) {
+            emailVerificationRepository.delete(verification);
+            throw expiredVerificationCode();
         }
 
         if (!passwordEncoder.matches(request.code().trim(), verification.getCodeHash())) {
+            verification.markFailedAttempt();
+            if (verification.getFailedAttempts() >= MAX_CONFIRM_ATTEMPTS) {
+                emailVerificationRepository.delete(verification);
+                throw expiredVerificationCode();
+            }
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email verification code is invalid");
         }
 
@@ -142,7 +164,7 @@ public class EmailVerificationService {
         Instant now = Instant.now();
         if (verification.isExpired(now)) {
             emailVerificationRepository.delete(verification);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email verification code expired");
+            throw expiredVerificationCode();
         }
 
         if (!verification.isVerified()) {
@@ -189,6 +211,10 @@ public class EmailVerificationService {
             logger.warn("Failed to send email verification code to {}", email, exception);
             return false;
         }
+    }
+
+    private static ResponseStatusException expiredVerificationCode() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email verification code expired");
     }
 
     private static String buildVerificationMailBody(String code) {

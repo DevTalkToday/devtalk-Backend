@@ -409,7 +409,7 @@ public class PostService {
         return new PostResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
-                createExcerpt(post.getContent()),
+                PostContentText.createExcerpt(post.getContent()),
                 post.getContent(),
                 post.getCategory(),
                 toAuthorResponse(post.getAuthor()),
@@ -436,7 +436,7 @@ public class PostService {
         return new PostSummaryResponse(
                 String.valueOf(post.getId()),
                 post.getTitle(),
-                createExcerpt(post.getContent()),
+                PostContentText.createExcerpt(post.getContent()),
                 post.getCategory(),
                 toAuthorResponse(post.getAuthor()),
                 post.getCreatedAt(),
@@ -593,11 +593,6 @@ public class PostService {
                 .toList();
     }
 
-    private static String createExcerpt(String content) {
-        String normalized = trim(content).replaceAll("\\s+", " ");
-        return normalized.length() > 150 ? normalized.substring(0, 150) : normalized;
-    }
-
     private static boolean canUseDatabaseListing(
             List<String> categories,
             List<String> resolutions,
@@ -745,7 +740,7 @@ public class PostService {
     private static String buildSearchableText(Post post) {
         StringBuilder builder = new StringBuilder();
         appendSearchValue(builder, post.getTitle());
-        appendSearchValue(builder, createExcerpt(post.getContent()));
+        appendSearchValue(builder, PostContentText.createExcerpt(post.getContent()));
         appendSearchValue(builder, post.getContent());
         appendSearchValues(builder, post.getTags());
         appendSearchValues(builder, post.getMajors());

@@ -115,6 +115,17 @@ class PostServiceTest {
     }
 
     @Test
+    void getPostExcerptNormalizesSupportedHtmlMarkup() {
+        AppUser author = user(1L, "author@example.com");
+        Post post = withId(new Post("title", "<h1>Hello</h1>\nFirst line<br>Second line<hr />Done", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+
+        PostResponse response = service.getPost(100L, false, author);
+
+        assertEquals("Hello First line Second line Done", response.excerpt());
+    }
+
+    @Test
     void updateClosedBugPostConvertsToQnaAndKeepsSharedFields() {
         AppUser author = user(1L, "author@example.com");
         Post post = withId(new Post("title", "body", "bug", author), 100L);

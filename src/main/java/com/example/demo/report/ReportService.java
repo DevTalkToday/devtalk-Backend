@@ -3,6 +3,7 @@ package com.example.demo.report;
 import com.example.demo.auth.AdminAccess;
 import com.example.demo.auth.AppUser;
 import jakarta.transaction.Transactional;
+import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -41,7 +42,7 @@ public class ReportService {
                 targetType,
                 targetId,
                 clamp(payload.targetLabel(), 120),
-                clamp(payload.targetUrl(), 300),
+                sanitizeTargetUrl(payload.targetUrl()),
                 subject,
                 content,
                 reporter == null ? null : reporter.getId(),
@@ -86,5 +87,24 @@ public class ReportService {
 
     private static String nullToBlank(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String sanitizeTargetUrl(String value) {
+        String normalized = clamp(value, 300);
+        if (normalized.isBlank() || normalized.chars().anyMatch(Character::isISOControl)) {
+            return "";
+        }
+
+        try {
+            URI uri = URI.create(normalized);
+            if (!uri.isAbsolute()) {
+                return normalized.startsWith("/") && !normalized.startsWith("//") ? normalized : "";
+            }
+
+            String scheme = nullToBlank(uri.getScheme()).toLowerCase(Locale.ROOT);
+            return "http".equals(scheme) || "https".equals(scheme) ? uri.toString() : "";
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
     }
 }

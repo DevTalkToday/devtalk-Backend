@@ -1,5 +1,6 @@
 package com.example.demo.auth;
 
+import static com.example.demo.TestSupport.setField;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -7,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -79,6 +81,60 @@ class EmailVerificationServiceTest {
         assertEquals("user@example.com", response.email());
         assertEquals(true, response.verified());
         assertNotNull(verification.getVerifiedAt());
+    }
+
+    @Test
+    void requestCodeRejectsRapidResend() {
+        EmailVerificationService service = new EmailVerificationService(
+                emailVerificationRepository,
+                userRepository,
+                passwordEncoder,
+                false,
+                "http://localhost:3000",
+                (JavaMailSender) null,
+                ""
+        );
+        EmailVerification verification = new EmailVerification("user@example.com", "encoded", Instant.now().plusSeconds(600));
+
+        when(userRepository.existsByUsernameIgnoreCase("user@example.com")).thenReturn(false);
+        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(verification));
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> service.requestCode(new EmailVerificationRequest("user@example.com"))
+        );
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, error.getStatusCode());
+        assertEquals("Email verification request is too frequent", error.getReason());
+        verify(emailVerificationRepository, never()).save(any(EmailVerification.class));
+    }
+
+    @Test
+    void confirmCodeExpiresAfterTooManyFailedAttempts() {
+        EmailVerificationService service = new EmailVerificationService(
+                emailVerificationRepository,
+                userRepository,
+                passwordEncoder,
+                false,
+                "http://localhost:3000",
+                (JavaMailSender) null,
+                ""
+        );
+        EmailVerification verification = new EmailVerification("user@example.com", "encoded", Instant.now().plusSeconds(600));
+        setField(verification, "failedAttempts", 4);
+
+        when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(verification));
+        when(passwordEncoder.matches("123456", "encoded")).thenReturn(false);
+
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> service.confirmCode(new EmailVerificationConfirmRequest("user@example.com", "123456"))
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+        assertEquals("Email verification code expired", error.getReason());
+        verify(emailVerificationRepository).delete(verification);
     }
 
     @Test

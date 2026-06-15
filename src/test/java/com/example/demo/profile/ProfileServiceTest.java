@@ -48,7 +48,7 @@ class ProfileServiceTest {
     @Test
     void publicProfileListsExcludePrivateTalkEntries() {
         AppUser user = user(1L, "user@example.com");
-        Post publicPost = withId(new Post("public", "body", "bug", user), 10L);
+        Post publicPost = withId(new Post("public", "<h1>Heading</h1>\nbody<br>next", "bug", user), 10L);
         PostComment publicComment = withId(new PostComment(publicPost, user, "comment"), 20L);
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -64,6 +64,7 @@ class ProfileServiceTest {
 
         assertEquals(1, posts.items().size());
         assertEquals("10", posts.items().getFirst().id());
+        assertEquals("Heading body next", posts.items().getFirst().excerpt());
         assertEquals(1, comments.items().size());
         assertEquals("20", comments.items().getFirst().id());
         verify(postRepository).findByAuthorAndCategoryNotOrderByCreatedAtDesc(user, "talk", PageRequest.of(0, 24));

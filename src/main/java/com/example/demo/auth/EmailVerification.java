@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Duration;
 import java.time.Instant;
 
 @Entity
@@ -36,6 +37,9 @@ public class EmailVerification {
     @Column(nullable = false)
     private Instant requestedAt = Instant.now();
 
+    @Column(nullable = false)
+    private int failedAttempts = 0;
+
     protected EmailVerification() {
     }
 
@@ -62,15 +66,28 @@ public class EmailVerification {
         return verifiedAt;
     }
 
+    public Instant getRequestedAt() {
+        return requestedAt;
+    }
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
     public void renew(String codeHash, Instant expiresAt) {
         this.codeHash = codeHash;
         this.expiresAt = expiresAt;
         this.verifiedAt = null;
         this.requestedAt = Instant.now();
+        this.failedAttempts = 0;
     }
 
     public void markVerified(Instant verifiedAt) {
         this.verifiedAt = verifiedAt;
+    }
+
+    public void markFailedAttempt() {
+        this.failedAttempts += 1;
     }
 
     public boolean isExpired(Instant now) {
@@ -79,5 +96,9 @@ public class EmailVerification {
 
     public boolean isVerified() {
         return verifiedAt != null;
+    }
+
+    public boolean wasRequestedRecently(Instant now, Duration cooldown) {
+        return requestedAt.plus(cooldown).isAfter(now);
     }
 }
