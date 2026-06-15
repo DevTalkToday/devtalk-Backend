@@ -62,4 +62,11 @@ jobs:
             echo "Deployment verification failed after retries."
             exit 1
           fi
+
+          follow_status="$(docker compose exec -T backend curl -s -o /tmp/follow-check-body -w '%{http_code}' http://127.0.0.1:4000/profile/1/follow || true)"
+          if [ "$follow_status" != "405" ]; then
+            echo "Follow endpoint verification failed. Expected 405, got ${follow_status}."
+            docker compose exec -T backend sh -lc 'cat /tmp/follow-check-body || true'
+            exit 1
+          fi
           EOF
