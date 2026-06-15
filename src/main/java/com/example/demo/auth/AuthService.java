@@ -39,6 +39,7 @@ public class AuthService {
     private final GithubOAuthClient githubOAuthClient;
     private final GoogleOAuthClient googleOAuthClient;
     private final EmailVerificationService emailVerificationService;
+    private final AuthRateLimitService authRateLimitService;
 
     public AuthService(
             UserRepository userRepository,
@@ -47,7 +48,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             GithubOAuthClient githubOAuthClient,
             GoogleOAuthClient googleOAuthClient,
-            EmailVerificationService emailVerificationService
+            EmailVerificationService emailVerificationService,
+            AuthRateLimitService authRateLimitService
     ) {
         this.userRepository = userRepository;
         this.authTokenRepository = authTokenRepository;
@@ -56,6 +58,7 @@ public class AuthService {
         this.githubOAuthClient = githubOAuthClient;
         this.googleOAuthClient = googleOAuthClient;
         this.emailVerificationService = emailVerificationService;
+        this.authRateLimitService = authRateLimitService;
     }
 
     public EmailVerificationRequestResponse requestEmailVerification(EmailVerificationRequest request) {
@@ -91,6 +94,7 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String identifier = request.username().trim();
+        authRateLimitService.checkLoginIdentifierAllowed(identifier);
         AppUser user = userRepository.findByUsernameIgnoreCase(identifier)
                 .or(() -> userRepository.findByEmailIgnoreCase(identifier))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
@@ -99,6 +103,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
         }
 
+        authRateLimitService.resetLoginIdentifier(identifier);
         return createAuthResponse(user);
     }
 

@@ -1,6 +1,4 @@
 package com.example.demo.auth;
-
-import com.example.demo.config.CorsOriginUtils;
 import com.example.demo.auth.dto.EmailVerificationConfirmRequest;
 import com.example.demo.auth.dto.EmailVerificationConfirmResponse;
 import com.example.demo.auth.dto.EmailVerificationRequest;
@@ -36,7 +34,6 @@ public class EmailVerificationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final boolean exposeDebugCode;
-    private final boolean localDevelopmentOrigin;
     private final JavaMailSender mailSender;
     private final String verificationFromAddress;
 
@@ -74,7 +71,6 @@ public class EmailVerificationService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.exposeDebugCode = exposeDebugCode;
-        this.localDevelopmentOrigin = CorsOriginUtils.containsLocalDevelopmentOrigin(configuredAllowedOrigins);
         this.mailSender = mailSender;
         this.verificationFromAddress = verificationFromAddress == null ? "" : verificationFromAddress.trim();
     }
@@ -108,7 +104,7 @@ public class EmailVerificationService {
         emailVerificationRepository.save(verification);
 
         boolean emailDelivered = sendVerificationEmail(email, code);
-        boolean shouldExposeDebugCode = exposeDebugCode || (!emailDelivered && localDevelopmentOrigin);
+        boolean shouldExposeDebugCode = exposeDebugCode;
 
         if (!emailDelivered && !shouldExposeDebugCode) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, SEND_FAILURE_REASON);
@@ -190,7 +186,7 @@ public class EmailVerificationService {
 
     private boolean sendVerificationEmail(String email, String code) {
         if (mailSender == null) {
-            if (!localDevelopmentOrigin && !exposeDebugCode) {
+            if (!exposeDebugCode) {
                 logger.warn("Email sender is not configured for {}", email);
             }
             return false;

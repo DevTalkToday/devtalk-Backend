@@ -12,7 +12,11 @@ import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.MeResponse;
 import com.example.demo.auth.dto.SignupRequest;
 import com.example.demo.auth.dto.UserResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,9 +31,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/auth")
 public class AuthController {
     private final AuthService authService;
+    private final AuthRateLimitService authRateLimitService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, AuthRateLimitService authRateLimitService) {
         this.authService = authService;
+        this.authRateLimitService = authRateLimitService;
     }
 
     @PostMapping("/signup")
@@ -48,12 +54,14 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+    public AuthResponse login(HttpServletRequest servletRequest, @Valid @RequestBody LoginRequest request) {
+        authRateLimitService.checkLoginIpAllowed(readClientIp(servletRequest));
         return authService.login(request);
     }
 
     @PostMapping("/token")
-    public AuthResponse token() {
+    public AuthResponse token(HttpServletRequest servletRequest) {
+        authRateLimitService.checkGuestTokenIpAllowed(readClientIp(servletRequest));
         return authService.issueGuestToken();
     }
 
@@ -97,5 +105,42 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bearer token is required");
         }
         return token;
+    }
+
+    private static String readClientIp(HttpServletRequest request) {
+        String remoteAddr = request.getRemoteAddr();
+        if (!isTrustedProxy(remoteAddr)) {
+            return remoteAddr;
+        }
+
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (forwardedFor != null && !forwardedFor.isBlank()) {
+            return forwardedFor;
+        }
+
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp;
+        }
+
+        return remoteAddr;
+    }
+
+    private static boolean isTrustedProxy(String remoteAddr) {
+        if (remoteAddr == null || remoteAddr.isBlank()) {
+            return false;
+        }
+
+        try {
+            InetAddress address = InetAddress.getByName(remoteAddr);
+            if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()) {
+                return true;
+            }
+
+            String normalized = address.getHostAddress().toLowerCase(Locale.ROOT);
+            return normalized.startsWith("fc") || normalized.startsWith("fd");
+        } catch (UnknownHostException ignored) {
+            return false;
+        }
     }
 }

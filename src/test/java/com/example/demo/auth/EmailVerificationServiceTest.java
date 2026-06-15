@@ -179,11 +179,13 @@ class EmailVerificationServiceTest {
         when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.encode(anyString())).thenReturn("encoded");
 
-        EmailVerificationRequestResponse response = service.requestCode(new EmailVerificationRequest("user@example.com"));
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> service.requestCode(new EmailVerificationRequest("user@example.com"))
+        );
 
-        assertEquals(false, response.emailSent());
-        assertNotNull(response.debugCode());
-        assertEquals(6, response.debugCode().length());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, error.getStatusCode());
+        assertEquals("Failed to send verification email", error.getReason());
     }
 
     @Test
@@ -203,11 +205,13 @@ class EmailVerificationServiceTest {
         when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.encode(anyString())).thenReturn("encoded");
 
-        EmailVerificationRequestResponse response = service.requestCode(new EmailVerificationRequest("user@example.com"));
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> service.requestCode(new EmailVerificationRequest("user@example.com"))
+        );
 
-        assertEquals(false, response.emailSent());
-        assertNotNull(response.debugCode());
-        assertEquals(6, response.debugCode().length());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, error.getStatusCode());
+        assertEquals("Failed to send verification email", error.getReason());
     }
 
     @Test
@@ -280,10 +284,40 @@ class EmailVerificationServiceTest {
         when(passwordEncoder.encode(anyString())).thenReturn("encoded");
         org.mockito.Mockito.doThrow(new MailSendException("boom")).when(mailSender).send(any(SimpleMailMessage.class));
 
+        ResponseStatusException error = assertThrows(
+                ResponseStatusException.class,
+                () -> service.requestCode(new EmailVerificationRequest("user@example.com"))
+        );
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, error.getStatusCode());
+        assertEquals("Failed to send verification email", error.getReason());
+        verify(mailSender).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void requestCodeReturnsDebugCodeWhenMailSendFailsAndDebugIsEnabled() {
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        EmailVerificationService service = new EmailVerificationService(
+                emailVerificationRepository,
+                userRepository,
+                passwordEncoder,
+                true,
+                "https://devtalk.example.com",
+                mailSender,
+                "noreply@devtalk.local"
+        );
+
+        when(userRepository.existsByUsernameIgnoreCase("user@example.com")).thenReturn(false);
+        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(emailVerificationRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+        org.mockito.Mockito.doThrow(new MailSendException("boom")).when(mailSender).send(any(SimpleMailMessage.class));
+
         EmailVerificationRequestResponse response = service.requestCode(new EmailVerificationRequest("user@example.com"));
 
         assertEquals(false, response.emailSent());
         assertNotNull(response.debugCode());
+        assertEquals(6, response.debugCode().length());
         verify(mailSender).send(any(SimpleMailMessage.class));
     }
 }

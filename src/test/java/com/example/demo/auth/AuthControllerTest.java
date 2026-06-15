@@ -2,7 +2,9 @@ package com.example.demo.auth;
 
 import static com.example.demo.ControllerTestSupport.mockMvc;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,11 +19,13 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.test.web.servlet.MockMvc;
 
 class AuthControllerTest {
     private final AuthService authService = mock(AuthService.class);
-    private final MockMvc mvc = mockMvc(new AuthController(authService));
+    private final AuthRateLimitService authRateLimitService = mock(AuthRateLimitService.class);
+    private final MockMvc mvc = mockMvc(new AuthController(authService, authRateLimitService));
 
     @Test
     void signupReturnsCreatedAuthResponse() throws Exception {
@@ -56,5 +60,23 @@ class AuthControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void loginReturnsTooManyRequestsWhenIpRateLimitTriggers() throws Exception {
+        org.mockito.Mockito.doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Too many login attempts"))
+                .when(authRateLimitService)
+                .checkLoginIpAllowed(anyString());
+
+        mvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Forwarded-For", "203.0.113.10")
+                        .content("""
+                                {"username":"user@example.com","password":"password123"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.message").value("Too many login attempts"));
+
+        verify(authService, never()).login(any());
     }
 }

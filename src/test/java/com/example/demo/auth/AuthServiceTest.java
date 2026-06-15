@@ -28,6 +28,7 @@ class AuthServiceTest {
     private final OAuthAccountRepository oAuthAccountRepository = mock(OAuthAccountRepository.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
+    private final AuthRateLimitService authRateLimitService = new AuthRateLimitService();
     private final AuthService service = new AuthService(
             userRepository,
             authTokenRepository,
@@ -35,7 +36,8 @@ class AuthServiceTest {
             passwordEncoder,
             mock(GithubOAuthClient.class),
             mock(GoogleOAuthClient.class),
-            emailVerificationService
+            emailVerificationService,
+            authRateLimitService
     );
 
     @Test
@@ -78,6 +80,29 @@ class AuthServiceTest {
 
         assertTrue(response.accessToken() != null && !response.accessToken().isBlank());
         assertEquals("user@example.com", response.user().email());
+    }
+
+    @Test
+    void loginThrottlesRepeatedFailuresForSameIdentifier() {
+        when(userRepository.findByUsernameIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.empty());
+
+        for (int attempt = 0; attempt < 5; attempt += 1) {
+            ResponseStatusException error = assertThrows(
+                    ResponseStatusException.class,
+                    () -> service.login(new LoginRequest("user@example.com", "wrong"))
+            );
+            assertEquals(HttpStatus.UNAUTHORIZED, error.getStatusCode());
+            assertEquals("Invalid username or password", error.getReason());
+        }
+
+        ResponseStatusException throttled = assertThrows(
+                ResponseStatusException.class,
+                () -> service.login(new LoginRequest("user@example.com", "wrong"))
+        );
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, throttled.getStatusCode());
+        assertEquals("Too many login attempts", throttled.getReason());
     }
 
     @Test
