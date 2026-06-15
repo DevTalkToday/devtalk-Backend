@@ -1,8 +1,11 @@
 package com.example.demo.notification;
 
 import com.example.demo.auth.AppUser;
+import com.example.demo.follow.Follow;
+import com.example.demo.follow.FollowRepository;
 import com.example.demo.post.Post;
 import com.example.demo.post.PostComment;
+import com.example.demo.post.PostContentText;
 import com.example.demo.settings.NotificationPreference;
 import com.example.demo.settings.NotificationPreferenceRepository;
 import jakarta.transaction.Transactional;
@@ -19,13 +22,16 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationPreferenceRepository notificationPreferenceRepository;
+    private final FollowRepository followRepository;
 
     public NotificationService(
             NotificationRepository notificationRepository,
-            NotificationPreferenceRepository notificationPreferenceRepository
+            NotificationPreferenceRepository notificationPreferenceRepository,
+            FollowRepository followRepository
     ) {
         this.notificationRepository = notificationRepository;
         this.notificationPreferenceRepository = notificationPreferenceRepository;
+        this.followRepository = followRepository;
     }
 
     @Transactional
@@ -81,6 +87,37 @@ public class NotificationService {
         String preview = "\"" + clamp(post.getTitle(), 60) + "\"에서 내 댓글이 채택되었습니다.";
         String body = clamp(comment.getBody(), 500);
         saveWithLongTarget(recipient, actor, NotificationType.COMMENT_ACCEPTED, title, preview, body, "POST", post.getId(), "/" + post.getId());
+    }
+
+    @Transactional
+    public void createFollowingPostNotifications(Post post) {
+        if (post == null || "talk".equals(post.getCategory())) {
+            return;
+        }
+
+        AppUser author = post.getAuthor();
+        String title = author.getNickname() + "님의 새 게시글";
+        String preview = "\"" + clamp(post.getTitle(), 60) + "\" 게시글이 게시되었습니다.";
+        String body = clamp(PostContentText.createExcerpt(post.getContent()), 500);
+
+        for (Follow follow : followRepository.findByFollowee(author)) {
+            AppUser recipient = follow.getFollower();
+            if (recipient.getId().equals(author.getId())) {
+                continue;
+            }
+
+            saveWithLongTarget(
+                    recipient,
+                    author,
+                    NotificationType.FOLLOWING_POST,
+                    title,
+                    preview,
+                    body,
+                    "POST",
+                    post.getId(),
+                    "/" + post.getId()
+            );
+        }
     }
 
     @Transactional

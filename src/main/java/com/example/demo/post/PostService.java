@@ -29,7 +29,7 @@ public class PostService {
     private static final String RESOLUTION_MODE_UNRESOLVED = "UNRESOLVED";
     private static final String RESOLUTION_MODE_ANY_STATUS = "ANY_STATUS";
     private static final String PRIVATE_POST_CATEGORY = "talk";
-    private static final Set<String> CATEGORIES = Set.of("qna", "bug", "talk");
+    private static final Set<String> CATEGORIES = Set.of("qna", "bug", "discussion", "talk");
     private static final Set<String> SORTS = Set.of("latest", "oldest", "popular", "views", "comments");
     private static final Set<String> RESOLUTIONS = Set.of("all", "resolved", "unresolved");
     private static final Set<String> BUG_STATUSES = Set.of("open", "investigating", "fixed", "closed");
@@ -123,7 +123,9 @@ public class PostService {
         PostPayload payload = normalizePostPayload(request, null);
         Post post = new Post(payload.title(), payload.content(), payload.category(), author);
         post.apply(payload);
-        return toResponse(postRepository.save(post), author);
+        Post savedPost = postRepository.save(post);
+        notificationService.createFollowingPostNotifications(savedPost);
+        return toResponse(savedPost, author);
     }
 
     @Transactional

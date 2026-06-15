@@ -8,7 +8,8 @@ public record FriendUserResponse(
         String username,
         String nickname,
         String description,
-        List<String> majors
+        List<String> majors,
+        String avatarUrl
 ) {
     public static FriendUserResponse from(AppUser user) {
         return new FriendUserResponse(
@@ -16,7 +17,8 @@ public record FriendUserResponse(
                 user.getUsername(),
                 user.getNickname(),
                 user.getDescription(),
-                user.getMajors()
+                user.getMajors(),
+                user.getAvatarUrl()
         );
     }
 }

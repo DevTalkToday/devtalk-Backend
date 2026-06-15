@@ -15,12 +15,13 @@ class SchemaInitializerTest {
     void runCreatesMissingInteractionColumnsAndBackfillsCounts() {
         JdbcTemplate jdbcTemplate = org.mockito.Mockito.mock(JdbcTemplate.class);
         when(jdbcTemplate.queryForObject(any(String.class), eq(Integer.class), any(), any())).thenReturn(0);
+        when(jdbcTemplate.queryForObject(any(String.class), eq(String.class), any(), any())).thenReturn("text");
 
         SchemaInitializer initializer = new SchemaInitializer(jdbcTemplate);
 
         initializer.run();
 
-        verify(jdbcTemplate, times(6)).execute(org.mockito.ArgumentMatchers.startsWith("ALTER TABLE"));
+        verify(jdbcTemplate, times(7)).execute(org.mockito.ArgumentMatchers.startsWith("ALTER TABLE"));
         verify(jdbcTemplate).update("UPDATE `posts` SET `like_count` = 0 WHERE `like_count` IS NULL");
         verify(jdbcTemplate).update("UPDATE `posts` SET `bookmark_count` = 0 WHERE `bookmark_count` IS NULL");
         verify(jdbcTemplate).update("UPDATE `posts` SET `view_count` = 0 WHERE `view_count` IS NULL");
@@ -36,6 +37,7 @@ class SchemaInitializerTest {
     void runSkipsColumnCreationWhenInteractionColumnsAlreadyExist() {
         JdbcTemplate jdbcTemplate = org.mockito.Mockito.mock(JdbcTemplate.class);
         when(jdbcTemplate.queryForObject(any(String.class), eq(Integer.class), any(), any())).thenReturn(1);
+        when(jdbcTemplate.queryForObject(any(String.class), eq(String.class), any(), any())).thenReturn("longtext");
 
         SchemaInitializer initializer = new SchemaInitializer(jdbcTemplate);
 
