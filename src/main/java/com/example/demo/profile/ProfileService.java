@@ -3,6 +3,11 @@ package com.example.demo.profile;
 import com.example.demo.auth.AppUser;
 import com.example.demo.auth.UserRepository;
 import com.example.demo.auth.dto.UserResponse;
+import com.example.demo.follow.Follow;
+import com.example.demo.follow.FollowRepository;
+import com.example.demo.friend.Friendship;
+import com.example.demo.friend.FriendshipRepository;
+import com.example.demo.friend.FriendshipStatus;
 import com.example.demo.post.BugResponse;
 import com.example.demo.post.Post;
 import com.example.demo.post.PostBookmark;
@@ -37,19 +42,25 @@ public class ProfileService {
     private final PostCommentRepository commentRepository;
     private final PostBookmarkRepository bookmarkRepository;
     private final PostLikeRepository likeRepository;
+    private final FriendshipRepository friendshipRepository;
+    private final FollowRepository followRepository;
 
     public ProfileService(
             UserRepository userRepository,
             PostRepository postRepository,
             PostCommentRepository commentRepository,
             PostBookmarkRepository bookmarkRepository,
-            PostLikeRepository likeRepository
+            PostLikeRepository likeRepository,
+            FriendshipRepository friendshipRepository,
+            FollowRepository followRepository
     ) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.bookmarkRepository = bookmarkRepository;
         this.likeRepository = likeRepository;
+        this.friendshipRepository = friendshipRepository;
+        this.followRepository = followRepository;
     }
 
     @Transactional(readOnly = true)
@@ -64,14 +75,51 @@ public class ProfileService {
     }
 
     @Transactional(readOnly = true)
-    public PublicProfileResponse getPublicProfile(Long userId) {
+    public PublicProfileResponse getPublicProfile(Long userId, AppUser viewer) {
         AppUser user = findPublicUser(userId);
+        Friendship friendship = viewer == null || viewer.getId().equals(userId)
+                ? null
+                : friendshipRepository.findBetween(viewer, user).orElse(null);
+        boolean viewerFollowing = viewer != null
+                && !viewer.getId().equals(userId)
+                && followRepository.existsByFollowerAndFollowee(viewer, user);
         return new PublicProfileResponse(
                 PublicProfileUserResponse.from(user),
                 postRepository.countByAuthorAndCategoryNot(user, PRIVATE_POST_CATEGORY),
                 commentRepository.countByAuthorAndPostCategoryNot(user, PRIVATE_POST_CATEGORY),
-                commentRepository.countAcceptedByAuthor(user)
+                commentRepository.countAcceptedByAuthor(user),
+                followRepository.countByFollowee(user),
+                followRepository.countByFollower(user),
+                relationshipOf(friendship, viewer),
+                friendship == null ? null : friendship.getId(),
+                viewerFollowing
         );
+    }
+
+    @Transactional
+    public void followUser(AppUser currentUser, Long targetUserId) {
+        AppUser user = findUser(currentUser);
+        AppUser target = findPublicUser(targetUserId);
+
+        if (user.getId().equals(target.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CANNOT_FOLLOW_YOURSELF");
+        }
+
+        followRepository.findByFollowerAndFollowee(user, target)
+                .orElseGet(() -> followRepository.save(new Follow(user, target)));
+    }
+
+    @Transactional
+    public void unfollowUser(AppUser currentUser, Long targetUserId) {
+        AppUser user = findUser(currentUser);
+        AppUser target = findPublicUser(targetUserId);
+
+        if (user.getId().equals(target.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CANNOT_UNFOLLOW_YOURSELF");
+        }
+
+        followRepository.findByFollowerAndFollowee(user, target)
+                .ifPresent(followRepository::delete);
     }
 
     @Transactional
@@ -378,6 +426,13 @@ public class ProfileService {
 
     private static String nullToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static String relationshipOf(Friendship friendship, AppUser viewer) {
+        if (friendship == null || viewer == null) return "NONE";
+        if (friendship.getStatus() == FriendshipStatus.ACCEPTED) return "FRIEND";
+        if (friendship.getRequester().getId().equals(viewer.getId())) return "SENT";
+        return "RECEIVED";
     }
 
     private List<PostSummaryResponse> toPostSummaryResponses(List<Post> posts, AppUser viewer) {

@@ -16,6 +16,14 @@ public class SchemaInitializer implements CommandLineRunner {
               AND table_name = ?
               AND column_name = ?
             """;
+    private static final String INFORMATION_SCHEMA_COLUMN_DATA_TYPE_QUERY = """
+            SELECT DATA_TYPE
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND column_name = ?
+            LIMIT 1
+            """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -33,7 +41,9 @@ public class SchemaInitializer implements CommandLineRunner {
         createPostBookmarksTable();
         createPostLikesTable();
         createPostCommentLikesTable();
+        createFollowsTable();
         ensurePostCounterColumns();
+        ensureLongTextColumn("posts", "content");
         backfillPostInteractionCounts();
     }
 
@@ -90,6 +100,21 @@ public class SchemaInitializer implements CommandLineRunner {
                     UNIQUE KEY `uk_post_comment_likes_user_comment` (`user_id`, `comment_id`),
                     INDEX `idx_post_comment_likes_user_created` (`user_id`, `created_at`),
                     INDEX `idx_post_comment_likes_comment` (`comment_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """);
+    }
+
+    private void createFollowsTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS `follows` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
+                    `follower_id` BIGINT NOT NULL,
+                    `followee_id` BIGINT NOT NULL,
+                    `created_at` DATETIME(6) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_follows_pair` (`follower_id`, `followee_id`),
+                    INDEX `idx_follows_follower_created` (`follower_id`, `created_at`),
+                    INDEX `idx_follows_followee_created` (`followee_id`, `created_at`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """);
     }
@@ -158,5 +183,23 @@ public class SchemaInitializer implements CommandLineRunner {
                 ALTER TABLE `%s`
                 ADD COLUMN `%s` %s
                 """.formatted(tableName, columnName, columnDefinition));
+    }
+
+    private void ensureLongTextColumn(String tableName, String columnName) {
+        String dataType = jdbcTemplate.queryForObject(
+                INFORMATION_SCHEMA_COLUMN_DATA_TYPE_QUERY,
+                String.class,
+                tableName,
+                columnName
+        );
+
+        if ("longtext".equalsIgnoreCase(dataType)) {
+            return;
+        }
+
+        jdbcTemplate.execute("""
+                ALTER TABLE `%s`
+                MODIFY COLUMN `%s` LONGTEXT NOT NULL
+                """.formatted(tableName, columnName));
     }
 }

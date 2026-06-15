@@ -5,6 +5,7 @@ import com.example.demo.auth.AppUser;
 import com.example.demo.auth.AuthTokenRepository;
 import com.example.demo.auth.OAuthAccountRepository;
 import com.example.demo.auth.UserRepository;
+import com.example.demo.follow.FollowRepository;
 import com.example.demo.friend.FriendshipRepository;
 import com.example.demo.message.MessageRepository;
 import com.example.demo.notification.NotificationRepository;
@@ -40,6 +41,7 @@ public class AdminService {
     private final AuthTokenRepository authTokenRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
     private final FriendshipRepository friendshipRepository;
+    private final FollowRepository followRepository;
     private final MessageRepository messageRepository;
     private final NotificationRepository notificationRepository;
     private final NotificationPreferenceRepository notificationPreferenceRepository;
@@ -55,6 +57,7 @@ public class AdminService {
             AuthTokenRepository authTokenRepository,
             OAuthAccountRepository oAuthAccountRepository,
             FriendshipRepository friendshipRepository,
+            FollowRepository followRepository,
             MessageRepository messageRepository,
             NotificationRepository notificationRepository,
             NotificationPreferenceRepository notificationPreferenceRepository,
@@ -69,6 +72,7 @@ public class AdminService {
         this.authTokenRepository = authTokenRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
         this.friendshipRepository = friendshipRepository;
+        this.followRepository = followRepository;
         this.messageRepository = messageRepository;
         this.notificationRepository = notificationRepository;
         this.notificationPreferenceRepository = notificationPreferenceRepository;
@@ -128,6 +132,7 @@ public class AdminService {
         notificationRepository.deleteByRecipientOrActor(target, target);
         messageRepository.deleteBySenderOrRecipient(target, target);
         friendshipRepository.deleteByRequesterOrAddressee(target, target);
+        followRepository.deleteByFollowerOrFollowee(target, target);
 
         userRepository.delete(target);
         return new UserDeleteResponse(userId, "deleted");
