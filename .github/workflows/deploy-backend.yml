@@ -87,20 +87,22 @@ jobs:
           }
 
           ensure_repo https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend backend
-          cd ~/devtalk/devtalk-backend/demo
-          git remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
-          git fetch origin main
-          git reset --hard origin/main
-          git clean -fd
+          backend_repo_dir="$HOME/devtalk/devtalk-backend/demo"
+          cd "$backend_repo_dir"
+          git -c safe.directory="$backend_repo_dir" remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
+          git -c safe.directory="$backend_repo_dir" fetch origin main
+          git -c safe.directory="$backend_repo_dir" reset --hard origin/main
+          git -c safe.directory="$backend_repo_dir" clean -fd
           mkdir -p build/libs
           rm -f build/libs/*.jar
 
           ensure_repo https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend frontend
-          cd ~/devtalk/devtalk-frontend
-          git remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
-          git fetch origin main
-          git reset --hard origin/main
-          git clean -fd
+          frontend_repo_dir="$HOME/devtalk/devtalk-frontend"
+          cd "$frontend_repo_dir"
+          git -c safe.directory="$frontend_repo_dir" remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
+          git -c safe.directory="$frontend_repo_dir" fetch origin main
+          git -c safe.directory="$frontend_repo_dir" reset --hard origin/main
+          git -c safe.directory="$frontend_repo_dir" clean -fd
           EOF
 
       - name: Upload backend jar to VM
