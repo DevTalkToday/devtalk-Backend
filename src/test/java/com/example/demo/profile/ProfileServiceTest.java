@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.auth.UserRepository;
+import com.example.demo.friend.Friendship;
 import com.example.demo.follow.FollowRepository;
 import com.example.demo.friend.FriendshipRepository;
 import com.example.demo.post.Post;
@@ -61,6 +62,31 @@ class ProfileServiceTest {
         assertEquals(5L, response.followerCount());
         assertEquals(3L, response.followingCount());
         assertEquals("NONE", response.viewerFriendshipStatus());
+    }
+
+    @Test
+    void publicProfileIncludesFriendshipAndFollowStateWithZeroCountDefaults() {
+        AppUser viewer = user(1L, "viewer@example.com");
+        AppUser user = user(2L, "user@example.com");
+        Friendship friendship = withId(new Friendship(viewer, user), 10L);
+        friendship.accept();
+
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+        when(postRepository.countByAuthorAndCategoryNot(user, "talk")).thenReturn(0L);
+        when(commentRepository.countByAuthorAndPostCategoryNot(user, "talk")).thenReturn(0L);
+        when(commentRepository.countAcceptedByAuthor(user)).thenReturn(0L);
+        when(friendshipRepository.findBetween(viewer, user)).thenReturn(Optional.of(friendship));
+        when(followRepository.existsByFollowerAndFollowee(viewer, user)).thenReturn(true);
+        when(followRepository.countByFollowee(user)).thenReturn(0L);
+        when(followRepository.countByFollower(user)).thenReturn(0L);
+
+        PublicProfileResponse response = service.getPublicProfile(2L, viewer);
+
+        assertEquals("FRIEND", response.viewerFriendshipStatus());
+        assertEquals(Long.valueOf(10L), response.viewerFriendshipId());
+        assertEquals(true, response.viewerFollowing());
+        assertEquals(0L, response.followerCount());
+        assertEquals(0L, response.followingCount());
     }
 
     @Test
