@@ -45,7 +45,7 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy on VM
+      - name: Prepare repositories on VM
         env:
           VM_HOST: ${{ secrets.VM_HOST }}
           VM_PORT: ${{ secrets.VM_PORT }}
@@ -61,17 +61,6 @@ jobs:
             -o ServerAliveCountMax=4
             -p "$VM_PORT"
           )
-          remote_scp_opts=(
-            -i ~/.ssh/id_ed25519
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ServerAliveInterval=15
-            -o ServerAliveCountMax=4
-            -P "$VM_PORT"
-          )
-
           echo "[deploy] preparing backend repository on VM"
           ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
@@ -112,8 +101,42 @@ jobs:
           git checkout -B main origin/main
           EOF
 
+      - name: Upload backend jar to VM
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          remote_scp_opts=(
+            -i ~/.ssh/id_ed25519
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -P "$VM_PORT"
+          )
+
           echo "[deploy] uploading backend jar to VM"
           scp "${remote_scp_opts[@]}" build/libs/*.jar "$VM_USER@$VM_HOST:~/devtalk/devtalk-backend/demo/build/libs/"
+
+      - name: Rebuild services on VM
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          remote_ssh_opts=(
+            -i ~/.ssh/id_ed25519
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -p "$VM_PORT"
+          )
 
           ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
