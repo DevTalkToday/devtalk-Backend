@@ -162,6 +162,10 @@ jobs:
             exit 1
           fi
 
+          set -a
+          . ./.env
+          set +a
+
           required_vars=(
             APP_ORIGIN
             MYSQL_DATABASE
@@ -184,9 +188,19 @@ jobs:
 
           echo "[deploy] starting mysql"
           docker compose up -d mysql
-          echo "[deploy] rebuilding backend and frontend"
-          docker compose up -d --build backend
-          docker compose up -d --build frontend
+          echo "[deploy] building backend image directly"
+          docker build -t gsmsv-backend "$HOME/devtalk/devtalk-backend/demo"
+          echo "[deploy] building frontend image directly"
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=/api \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=/api \
+            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-}" \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
+            -t gsmsv-frontend \
+            "$HOME/devtalk/devtalk-frontend"
+          echo "[deploy] recreating backend and frontend without compose build"
+          docker compose up -d --no-build backend
+          docker compose up -d --no-build frontend
           echo "[deploy] ensuring nginx stays up"
           docker compose up -d --no-build nginx
 
