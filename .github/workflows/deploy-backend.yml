@@ -42,23 +42,44 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
 
-          frontend_repo_dir="$HOME/devtalk/devtalk-frontend"
-          if [ -d "$frontend_repo_dir" ] && git -C "$frontend_repo_dir" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-            echo "[deploy] updating frontend repository"
-            cd "$frontend_repo_dir"
-            git fetch origin main
-            git checkout -B main origin/main
-          else
-            echo "[deploy] skipping frontend repository sync; $frontend_repo_dir is not a git repository"
+          cd ~/devtalk/deploy/gsmsv
+          if [[ ! -f .env ]]; then
+            echo "Missing deploy/gsmsv/.env"
+            exit 1
           fi
 
-          echo "[deploy] rebuilding compose services"
-          cd ~/devtalk/deploy/gsmsv
-          bash start.sh
+          required_vars=(
+            APP_ORIGIN
+            MYSQL_DATABASE
+            MYSQL_USER
+            MYSQL_PASSWORD
+            MYSQL_ROOT_PASSWORD
+          )
+
+          missing=()
+          for key in "${required_vars[@]}"; do
+            if ! grep -Eq "^${key}=.+" .env; then
+              missing+=("$key")
+            fi
+          done
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "Missing required values in .env: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "[deploy] starting mysql"
+          docker compose up -d mysql
+          echo "[deploy] rebuilding backend only"
+          docker compose up -d --build backend
+          echo "[deploy] ensuring frontend and nginx stay up without rebuilding frontend"
+          docker compose up -d --no-build frontend nginx
 
           verified=0
           for attempt in 1 2 3 4 5 6; do
-            if bash verify.sh; then
+            if docker compose ps \
+              && docker compose exec -T nginx wget -qO- http://backend:4000/health > /dev/null \
+              && docker compose exec -T nginx wget -qO- http://127.0.0.1/health > /dev/null; then
               verified=1
               break
             fi
