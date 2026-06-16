@@ -92,8 +92,8 @@ jobs:
           git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" fetch origin main
           git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" reset --hard origin/main
           git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" clean -fd
-          mkdir -p "$backend_repo_root/demo/build/libs"
-          rm -f "$backend_repo_root/demo/build/libs/"*.jar
+          mkdir -p "$backend_repo_root/build/libs"
+          rm -f "$backend_repo_root/build/libs/"*.jar
 
           ensure_repo https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend frontend
           frontend_repo_root="$HOME/devtalk/devtalk-frontend"
@@ -121,7 +121,7 @@ jobs:
           )
 
           echo "[deploy] uploading backend jar to VM"
-          scp "${remote_scp_opts[@]}" build/libs/*.jar "$VM_USER@$VM_HOST:~/devtalk/devtalk-backend/demo/build/libs/"
+          scp "${remote_scp_opts[@]}" build/libs/*.jar "$VM_USER@$VM_HOST:~/devtalk/devtalk-backend/build/libs/"
 
       - name: Rebuild services on VM
         env:
@@ -153,7 +153,7 @@ jobs:
           trap 'kill "$heartbeat_pid" >/dev/null 2>&1 || true' EXIT
 
           echo "[deploy] backend repository ready"
-          cd ~/devtalk/devtalk-backend/demo
+          cd ~/devtalk/devtalk-backend
           ls -l build/libs
 
           cd ~/devtalk/deploy/gsmsv
@@ -189,7 +189,7 @@ jobs:
           echo "[deploy] starting mysql"
           docker compose up -d mysql
           echo "[deploy] building backend image directly"
-          docker build -t gsmsv-backend "$HOME/devtalk/devtalk-backend/demo"
+          docker build -t gsmsv-backend "$HOME/devtalk/devtalk-backend"
           echo "[deploy] building frontend image directly"
           docker build \
             --build-arg NEXT_PUBLIC_API_URL=/api \
