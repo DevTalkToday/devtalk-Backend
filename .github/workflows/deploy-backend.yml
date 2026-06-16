@@ -90,7 +90,8 @@ jobs:
           cd ~/devtalk/devtalk-backend/demo
           git remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
           git fetch origin main
-          git checkout -B main origin/main
+          git reset --hard origin/main
+          git clean -fd
           mkdir -p build/libs
           rm -f build/libs/*.jar
 
@@ -98,7 +99,8 @@ jobs:
           cd ~/devtalk/devtalk-frontend
           git remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
           git fetch origin main
-          git checkout -B main origin/main
+          git reset --hard origin/main
+          git clean -fd
           EOF
 
       - name: Upload backend jar to VM
