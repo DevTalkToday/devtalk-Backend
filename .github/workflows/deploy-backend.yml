@@ -42,10 +42,15 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
 
-          echo "[deploy] updating frontend repository"
-          cd ~/devtalk/devtalk-frontend
-          git fetch origin main
-          git checkout -B main origin/main
+          frontend_repo_dir="$HOME/devtalk/devtalk-frontend"
+          if [ -d "$frontend_repo_dir" ] && git -C "$frontend_repo_dir" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+            echo "[deploy] updating frontend repository"
+            cd "$frontend_repo_dir"
+            git fetch origin main
+            git checkout -B main origin/main
+          else
+            echo "[deploy] skipping frontend repository sync; $frontend_repo_dir is not a git repository"
+          fi
 
           echo "[deploy] rebuilding compose services"
           cd ~/devtalk/deploy/gsmsv
