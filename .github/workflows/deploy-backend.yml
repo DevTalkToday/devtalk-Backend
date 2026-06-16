@@ -37,6 +37,16 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -p "$VM_PORT" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
+          heartbeat() {
+            while true; do
+              echo "[deploy] still running $(date '+%Y-%m-%dT%H:%M:%S%z')"
+              sleep 30
+            done
+          }
+          heartbeat &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" >/dev/null 2>&1 || true' EXIT
+
           echo "[deploy] updating backend repository"
           cd ~/devtalk/devtalk-backend/demo
           git fetch origin main
@@ -117,4 +127,7 @@ jobs:
             docker compose exec -T backend sh -lc 'cat /tmp/message-check-body || true'
             exit 1
           fi
+
+          kill "$heartbeat_pid" >/dev/null 2>&1 || true
+          trap - EXIT
           EOF
