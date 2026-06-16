@@ -5,6 +5,5 @@ public enum NotificationType {
     ADMIN_NOTICE,
     REPORT_SUBMITTED,
     REPORT_REVIEWED,
-    COMMENT_ACCEPTED,
-    FOLLOWING_POST
+    COMMENT_ACCEPTED
 }

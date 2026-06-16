@@ -8,8 +8,6 @@ import static org.mockito.Mockito.when;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.auth.UserRepository;
-import com.example.demo.follow.FollowRepository;
-import com.example.demo.friend.FriendshipRepository;
 import com.example.demo.post.Post;
 import com.example.demo.post.PostBookmark;
 import com.example.demo.post.PostBookmarkRepository;
@@ -29,17 +27,7 @@ class ProfileServiceTest {
     private final PostCommentRepository commentRepository = mock(PostCommentRepository.class);
     private final PostBookmarkRepository bookmarkRepository = mock(PostBookmarkRepository.class);
     private final PostLikeRepository likeRepository = mock(PostLikeRepository.class);
-    private final FriendshipRepository friendshipRepository = mock(FriendshipRepository.class);
-    private final FollowRepository followRepository = mock(FollowRepository.class);
-    private final ProfileService service = new ProfileService(
-            userRepository,
-            postRepository,
-            commentRepository,
-            bookmarkRepository,
-            likeRepository,
-            friendshipRepository,
-            followRepository
-    );
+    private final ProfileService service = new ProfileService(userRepository, postRepository, commentRepository, bookmarkRepository, likeRepository);
 
     @Test
     void publicProfileExcludesPrivatePostAndCommentCounts() {
@@ -50,17 +38,11 @@ class ProfileServiceTest {
         when(commentRepository.countByAuthorAndPostCategoryNot(user, "talk")).thenReturn(1L);
         when(commentRepository.countAcceptedByAuthor(user)).thenReturn(0L);
 
-        when(followRepository.countByFollowee(user)).thenReturn(5L);
-        when(followRepository.countByFollower(user)).thenReturn(3L);
-
-        PublicProfileResponse response = service.getPublicProfile(1L, null);
+        PublicProfileResponse response = service.getPublicProfile(1L);
 
         assertEquals(2L, response.postCount());
         assertEquals(1L, response.commentCount());
         assertEquals(0L, response.acceptedCommentCount());
-        assertEquals(5L, response.followerCount());
-        assertEquals(3L, response.followingCount());
-        assertEquals("NONE", response.viewerFriendshipStatus());
     }
 
     @Test

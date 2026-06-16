@@ -28,8 +28,6 @@ out/
 
 ### Local server logs ###
 spring-server*.log
-hs_err_pid*.log
-replay_pid*.log
 
 ### Local secrets ###
 .env

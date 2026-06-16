@@ -13,25 +13,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - name: Build backend jar
-        run: |
-          rm -f build/libs/*.jar
-          chmod +x gradlew
-          ./gradlew bootJar --no-daemon
-
       - name: Configure SSH
         run: |
           set -euo pipefail
@@ -45,179 +28,31 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare repositories on VM
+      - name: Deploy on VM
         env:
           VM_HOST: ${{ secrets.VM_HOST }}
           VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
-          remote_ssh_opts=(
-            -i ~/.ssh/id_ed25519
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ServerAliveInterval=15
-            -o ServerAliveCountMax=4
-            -p "$VM_PORT"
-          )
-          echo "[deploy] preparing backend repository on VM"
-          ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "$VM_PORT" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
-
-          mkdir -p ~/devtalk
-
-          ensure_repo() {
-            local repo_url="$1"
-            local repo_dir="$2"
-            local repo_name="$3"
-
-            if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-              if [ -d "$repo_dir" ] && [ -n "$(ls -A "$repo_dir" 2>/dev/null)" ]; then
-                local backup_dir="${repo_dir}.backup.$(date '+%Y%m%d%H%M%S')"
-                echo "[deploy] moving existing ${repo_name} directory to ${backup_dir}"
-                mv "$repo_dir" "$backup_dir"
-              fi
-
-              rmdir "$repo_dir" 2>/dev/null || true
-
-              echo "[deploy] cloning ${repo_name} repository"
-              git clone "$repo_url" "$repo_dir"
-            fi
-          }
-
-          ensure_repo https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend backend
-          backend_repo_root="$HOME/devtalk/devtalk-backend"
-          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
-          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" fetch origin main
-          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" reset --hard origin/main
-          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" clean -fd
-          mkdir -p "$backend_repo_root/build/libs"
-          rm -f "$backend_repo_root/build/libs/"*.jar
-
-          ensure_repo https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend frontend
-          frontend_repo_root="$HOME/devtalk/devtalk-frontend"
-          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
-          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" fetch origin main
-          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" reset --hard origin/main
-          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" clean -fd
-          EOF
-
-      - name: Upload backend jar to VM
-        env:
-          VM_HOST: ${{ secrets.VM_HOST }}
-          VM_PORT: ${{ secrets.VM_PORT }}
-          VM_USER: ${{ secrets.VM_USER }}
-        run: |
-          remote_scp_opts=(
-            -i ~/.ssh/id_ed25519
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ServerAliveInterval=15
-            -o ServerAliveCountMax=4
-            -P "$VM_PORT"
-          )
-
-          echo "[deploy] uploading backend jar to VM"
-          scp "${remote_scp_opts[@]}" build/libs/*.jar "$VM_USER@$VM_HOST:~/devtalk/devtalk-backend/build/libs/"
-
-      - name: Rebuild services on VM
-        env:
-          VM_HOST: ${{ secrets.VM_HOST }}
-          VM_PORT: ${{ secrets.VM_PORT }}
-          VM_USER: ${{ secrets.VM_USER }}
-        run: |
-          remote_ssh_opts=(
-            -i ~/.ssh/id_ed25519
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ServerAliveInterval=15
-            -o ServerAliveCountMax=4
-            -p "$VM_PORT"
-          )
-
-          ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
-          set -euo pipefail
-          heartbeat() {
-            while true; do
-              echo "[deploy] still running $(date '+%Y-%m-%dT%H:%M:%S%z')"
-              sleep 30
-            done
-          }
-          heartbeat &
-          heartbeat_pid=$!
-          trap 'kill "$heartbeat_pid" >/dev/null 2>&1 || true' EXIT
-
-          echo "[deploy] backend repository ready"
-          cd ~/devtalk/devtalk-backend
-          ls -l build/libs
-
+          cd ~/devtalk/devtalk-backend/demo
+          git fetch origin
+          git checkout main
+          git pull --ff-only origin main
           cd ~/devtalk/deploy/gsmsv
-          if [[ ! -f .env ]]; then
-            echo "Missing deploy/gsmsv/.env"
-            exit 1
-          fi
-
-          set -a
-          . ./.env
-          set +a
-
-          required_vars=(
-            APP_ORIGIN
-            MYSQL_DATABASE
-            MYSQL_USER
-            MYSQL_PASSWORD
-            MYSQL_ROOT_PASSWORD
-          )
-
-          missing=()
-          for key in "${required_vars[@]}"; do
-            if ! grep -Eq "^${key}=.+" .env; then
-              missing+=("$key")
-            fi
-          done
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "Missing required values in .env: ${missing[*]}"
-            exit 1
-          fi
-
-          echo "[deploy] starting mysql"
-          docker compose up -d mysql
-          echo "[deploy] building backend image directly"
-          docker build -t gsmsv-backend "$HOME/devtalk/devtalk-backend"
-          echo "[deploy] building frontend image directly"
-          docker build \
-            --build-arg NEXT_PUBLIC_API_URL=/api \
-            --build-arg NEXT_PUBLIC_API_BASE_URL=/api \
-            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-}" \
-            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}" \
-            -t gsmsv-frontend \
-            "$HOME/devtalk/devtalk-frontend"
-          echo "[deploy] recreating backend and frontend without compose build"
-          docker compose up -d --no-build backend
-          docker compose up -d --no-build frontend
-          echo "[deploy] ensuring nginx stays up"
-          docker compose up -d --no-build nginx
+          bash start.sh
 
           verified=0
-          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if docker compose ps \
-              && docker compose exec -T nginx wget -qO- http://backend:4000/health > /dev/null \
-              && docker compose exec -T nginx wget -qO- http://127.0.0.1/health > /dev/null \
-              && docker compose exec -T frontend node -e "fetch('http://127.0.0.1:3000').then((res) => { console.log(res.status); process.exit(res.ok ? 0 : 1); }).catch((error) => { console.error(error); process.exit(1); })" \
-              && docker compose exec -T frontend node -e "fetch('http://127.0.0.1:3000/api/profile/1').then((res) => { console.log(res.status); process.exit([200, 401, 404].includes(res.status) ? 0 : 1); }).catch((error) => { console.error(error); process.exit(1); })"; then
+          for attempt in 1 2 3 4 5 6; do
+            if bash verify.sh; then
               verified=1
               break
             fi
 
-            if [ "$attempt" -lt 12 ]; then
-              echo "verify attempt $attempt failed, retrying in 10s..."
-              sleep 10
+            if [ "$attempt" -lt 6 ]; then
+              echo "verify attempt $attempt failed, retrying in 5s..."
+              sleep 5
             fi
           done
 
@@ -225,34 +60,6 @@ jobs:
             echo "Deployment verification succeeded."
           else
             echo "Deployment verification failed after retries."
-            docker compose ps || true
-            docker compose logs --tail=120 frontend || true
-            docker compose logs --tail=120 backend || true
-            docker compose logs --tail=120 nginx || true
             exit 1
           fi
-
-          follow_status="$(docker compose exec -T backend curl -s -o /tmp/follow-check-body -w '%{http_code}' http://127.0.0.1:4000/profile/1/follow || true)"
-          if [ "$follow_status" != "401" ] && [ "$follow_status" != "405" ]; then
-            echo "Follow endpoint verification failed. Expected 401 or 405, got ${follow_status}."
-            docker compose exec -T backend sh -lc 'cat /tmp/follow-check-body || true'
-            exit 1
-          fi
-
-          friend_status="$(docker compose exec -T backend curl -s -o /tmp/friend-check-body -w '%{http_code}' http://127.0.0.1:4000/friends/received-count || true)"
-          if [ "$friend_status" != "401" ]; then
-            echo "Friend count endpoint verification failed. Expected 401, got ${friend_status}."
-            docker compose exec -T backend sh -lc 'cat /tmp/friend-check-body || true'
-            exit 1
-          fi
-
-          message_status="$(docker compose exec -T backend curl -s -o /tmp/message-check-body -w '%{http_code}' http://127.0.0.1:4000/messages/unread-count || true)"
-          if [ "$message_status" != "401" ]; then
-            echo "Message unread endpoint verification failed. Expected 401, got ${message_status}."
-            docker compose exec -T backend sh -lc 'cat /tmp/message-check-body || true'
-            exit 1
-          fi
-
-          kill "$heartbeat_pid" >/dev/null 2>&1 || true
-          trap - EXIT
           EOF
