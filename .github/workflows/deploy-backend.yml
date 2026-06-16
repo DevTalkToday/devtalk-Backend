@@ -78,23 +78,36 @@ jobs:
 
           mkdir -p ~/devtalk
 
-          if [ ! -d ~/devtalk/devtalk-backend/.git ]; then
-            echo "[deploy] cloning backend repository"
-            git clone https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend
-          fi
+          ensure_repo() {
+            local repo_url="$1"
+            local repo_dir="$2"
+            local repo_name="$3"
 
+            if [ ! -d "${repo_dir}/.git" ]; then
+              if [ -d "$repo_dir" ] && [ -n "$(ls -A "$repo_dir" 2>/dev/null)" ]; then
+                local backup_dir="${repo_dir}.backup.$(date '+%Y%m%d%H%M%S')"
+                echo "[deploy] moving existing ${repo_name} directory to ${backup_dir}"
+                mv "$repo_dir" "$backup_dir"
+              fi
+
+              rmdir "$repo_dir" 2>/dev/null || true
+
+              echo "[deploy] cloning ${repo_name} repository"
+              git clone "$repo_url" "$repo_dir"
+            fi
+          }
+
+          ensure_repo https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend backend
           cd ~/devtalk/devtalk-backend/demo
+          git remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
           git fetch origin main
           git checkout -B main origin/main
           mkdir -p build/libs
           rm -f build/libs/*.jar
 
-          if [ ! -d ~/devtalk/devtalk-frontend/.git ]; then
-            echo "[deploy] cloning frontend repository"
-            git clone https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend
-          fi
-
+          ensure_repo https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend frontend
           cd ~/devtalk/devtalk-frontend
+          git remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
           git fetch origin main
           git checkout -B main origin/main
           EOF
