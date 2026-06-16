@@ -75,11 +75,28 @@ jobs:
           echo "[deploy] preparing backend repository on VM"
           ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
+
+          mkdir -p ~/devtalk
+
+          if [ ! -d ~/devtalk/devtalk-backend/.git ]; then
+            echo "[deploy] cloning backend repository"
+            git clone https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend
+          fi
+
           cd ~/devtalk/devtalk-backend/demo
           git fetch origin main
           git checkout -B main origin/main
           mkdir -p build/libs
           rm -f build/libs/*.jar
+
+          if [ ! -d ~/devtalk/devtalk-frontend/.git ]; then
+            echo "[deploy] cloning frontend repository"
+            git clone https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend
+          fi
+
+          cd ~/devtalk/devtalk-frontend
+          git fetch origin main
+          git checkout -B main origin/main
           EOF
 
           echo "[deploy] uploading backend jar to VM"
@@ -129,16 +146,19 @@ jobs:
 
           echo "[deploy] starting mysql"
           docker compose up -d mysql
-          echo "[deploy] rebuilding backend only"
+          echo "[deploy] rebuilding backend and frontend"
           docker compose up -d --build backend
-          echo "[deploy] ensuring frontend and nginx stay up without rebuilding frontend"
-          docker compose up -d --no-build frontend nginx
+          docker compose up -d --build frontend
+          echo "[deploy] ensuring nginx stays up"
+          docker compose up -d --no-build nginx
 
           verified=0
           for attempt in 1 2 3 4 5 6; do
             if docker compose ps \
               && docker compose exec -T nginx wget -qO- http://backend:4000/health > /dev/null \
-              && docker compose exec -T nginx wget -qO- http://127.0.0.1/health > /dev/null; then
+              && docker compose exec -T nginx wget -qO- http://127.0.0.1/health > /dev/null \
+              && docker compose exec -T frontend node -e "fetch('http://127.0.0.1:3000').then((res) => { console.log(res.status); process.exit(res.ok ? 0 : 1); }).catch((error) => { console.error(error); process.exit(1); })" \
+              && docker compose exec -T frontend node -e "fetch('http://127.0.0.1:3000/api/profile/1').then((res) => { console.log(res.status); process.exit([200, 401, 404].includes(res.status) ? 0 : 1); }).catch((error) => { console.error(error); process.exit(1); })"; then
               verified=1
               break
             fi
