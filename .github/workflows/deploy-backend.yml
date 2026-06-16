@@ -13,6 +13,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Configure SSH
@@ -34,12 +35,21 @@ jobs:
           VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p "$VM_PORT" "$VM_USER@$VM_HOST" <<'EOF'
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -p "$VM_PORT" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
+          echo "[deploy] updating backend repository"
           cd ~/devtalk/devtalk-backend/demo
           git fetch origin
           git checkout main
           git pull --ff-only origin main
+
+          echo "[deploy] updating frontend repository"
+          cd ~/devtalk/devtalk-frontend
+          git fetch origin
+          git checkout main
+          git pull --ff-only origin main
+
+          echo "[deploy] rebuilding compose services"
           cd ~/devtalk/deploy/gsmsv
           bash start.sh
 
@@ -67,6 +77,20 @@ jobs:
           if [ "$follow_status" != "405" ]; then
             echo "Follow endpoint verification failed. Expected 405, got ${follow_status}."
             docker compose exec -T backend sh -lc 'cat /tmp/follow-check-body || true'
+            exit 1
+          fi
+
+          friend_status="$(docker compose exec -T backend curl -s -o /tmp/friend-check-body -w '%{http_code}' http://127.0.0.1:4000/friends/received-count || true)"
+          if [ "$friend_status" != "401" ]; then
+            echo "Friend count endpoint verification failed. Expected 401, got ${friend_status}."
+            docker compose exec -T backend sh -lc 'cat /tmp/friend-check-body || true'
+            exit 1
+          fi
+
+          message_status="$(docker compose exec -T backend curl -s -o /tmp/message-check-body -w '%{http_code}' http://127.0.0.1:4000/messages/unread-count || true)"
+          if [ "$message_status" != "401" ]; then
+            echo "Message unread endpoint verification failed. Expected 401, got ${message_status}."
+            docker compose exec -T backend sh -lc 'cat /tmp/message-check-body || true'
             exit 1
           fi
           EOF
