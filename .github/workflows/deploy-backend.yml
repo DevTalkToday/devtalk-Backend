@@ -16,6 +16,22 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build backend jar
+        run: |
+          rm -f build/libs/*.jar
+          chmod +x gradlew
+          ./gradlew bootJar --no-daemon
+
       - name: Configure SSH
         run: |
           set -euo pipefail
@@ -35,7 +51,41 @@ jobs:
           VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -p "$VM_PORT" "$VM_USER@$VM_HOST" <<'EOF'
+          remote_ssh_opts=(
+            -i ~/.ssh/id_ed25519
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -p "$VM_PORT"
+          )
+          remote_scp_opts=(
+            -i ~/.ssh/id_ed25519
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -P "$VM_PORT"
+          )
+
+          echo "[deploy] preparing backend repository on VM"
+          ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
+          set -euo pipefail
+          cd ~/devtalk/devtalk-backend/demo
+          git fetch origin main
+          git checkout -B main origin/main
+          mkdir -p build/libs
+          rm -f build/libs/*.jar
+          EOF
+
+          echo "[deploy] uploading backend jar to VM"
+          scp "${remote_scp_opts[@]}" build/libs/*.jar "$VM_USER@$VM_HOST:~/devtalk/devtalk-backend/demo/build/libs/"
+
+          ssh "${remote_ssh_opts[@]}" "$VM_USER@$VM_HOST" <<'EOF'
           set -euo pipefail
           heartbeat() {
             while true; do
@@ -47,10 +97,9 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" >/dev/null 2>&1 || true' EXIT
 
-          echo "[deploy] updating backend repository"
+          echo "[deploy] backend repository ready"
           cd ~/devtalk/devtalk-backend/demo
-          git fetch origin main
-          git checkout -B main origin/main
+          ls -l build/libs
 
           cd ~/devtalk/deploy/gsmsv
           if [[ ! -f .env ]]; then
