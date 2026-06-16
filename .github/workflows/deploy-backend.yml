@@ -39,15 +39,13 @@ jobs:
           set -euo pipefail
           echo "[deploy] updating backend repository"
           cd ~/devtalk/devtalk-backend/demo
-          git fetch origin
-          git checkout main
-          git pull --ff-only origin main
+          git fetch origin main
+          git checkout -B main origin/main
 
           echo "[deploy] updating frontend repository"
           cd ~/devtalk/devtalk-frontend
-          git fetch origin
-          git checkout main
-          git pull --ff-only origin main
+          git fetch origin main
+          git checkout -B main origin/main
 
           echo "[deploy] rebuilding compose services"
           cd ~/devtalk/deploy/gsmsv
