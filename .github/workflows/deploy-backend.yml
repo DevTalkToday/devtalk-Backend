@@ -72,7 +72,7 @@ jobs:
             local repo_dir="$2"
             local repo_name="$3"
 
-            if [ ! -d "${repo_dir}/.git" ]; then
+            if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
               if [ -d "$repo_dir" ] && [ -n "$(ls -A "$repo_dir" 2>/dev/null)" ]; then
                 local backup_dir="${repo_dir}.backup.$(date '+%Y%m%d%H%M%S')"
                 echo "[deploy] moving existing ${repo_name} directory to ${backup_dir}"
@@ -87,22 +87,20 @@ jobs:
           }
 
           ensure_repo https://github.com/DevTalkToday/devtalk-Backend.git ~/devtalk/devtalk-backend backend
-          backend_repo_dir="$HOME/devtalk/devtalk-backend/demo"
-          cd "$backend_repo_dir"
-          git -c safe.directory="$backend_repo_dir" remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
-          git -c safe.directory="$backend_repo_dir" fetch origin main
-          git -c safe.directory="$backend_repo_dir" reset --hard origin/main
-          git -c safe.directory="$backend_repo_dir" clean -fd
-          mkdir -p build/libs
-          rm -f build/libs/*.jar
+          backend_repo_root="$HOME/devtalk/devtalk-backend"
+          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" remote set-url origin https://github.com/DevTalkToday/devtalk-Backend.git
+          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" fetch origin main
+          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" reset --hard origin/main
+          git -C "$backend_repo_root" -c safe.directory="$backend_repo_root" clean -fd
+          mkdir -p "$backend_repo_root/demo/build/libs"
+          rm -f "$backend_repo_root/demo/build/libs/"*.jar
 
           ensure_repo https://github.com/DevTalkToday/devtalk-Frontend.git ~/devtalk/devtalk-frontend frontend
-          frontend_repo_dir="$HOME/devtalk/devtalk-frontend"
-          cd "$frontend_repo_dir"
-          git -c safe.directory="$frontend_repo_dir" remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
-          git -c safe.directory="$frontend_repo_dir" fetch origin main
-          git -c safe.directory="$frontend_repo_dir" reset --hard origin/main
-          git -c safe.directory="$frontend_repo_dir" clean -fd
+          frontend_repo_root="$HOME/devtalk/devtalk-frontend"
+          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" remote set-url origin https://github.com/DevTalkToday/devtalk-Frontend.git
+          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" fetch origin main
+          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" reset --hard origin/main
+          git -C "$frontend_repo_root" -c safe.directory="$frontend_repo_root" clean -fd
           EOF
 
       - name: Upload backend jar to VM
