@@ -24,6 +24,13 @@ public class SchemaInitializer implements CommandLineRunner {
               AND column_name = ?
             LIMIT 1
             """;
+    private static final String INFORMATION_SCHEMA_STATISTICS_QUERY = """
+            SELECT COUNT(*)
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND index_name = ?
+            """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -43,6 +50,7 @@ public class SchemaInitializer implements CommandLineRunner {
         createPostCommentLikesTable();
         createFollowsTable();
         ensurePostCounterColumns();
+        ensurePerformanceIndexes();
         ensureLongTextColumn("posts", "content");
         backfillPostInteractionCounts();
     }
@@ -167,6 +175,17 @@ public class SchemaInitializer implements CommandLineRunner {
                 """);
     }
 
+    private void ensurePerformanceIndexes() {
+        ensureIndexExists("posts", "idx_posts_created_updated_id", "`created_at`, `updated_at`, `id`");
+        ensureIndexExists("posts", "idx_posts_category_created_updated_id", "`category`, `created_at`, `updated_at`, `id`");
+        ensureIndexExists("posts", "idx_posts_like_created_updated_id", "`like_count`, `created_at`, `updated_at`, `id`");
+        ensureIndexExists("posts", "idx_posts_view_created_updated_id", "`view_count`, `created_at`, `updated_at`, `id`");
+        ensureIndexExists("posts", "idx_posts_author_created_id", "`author_id`, `created_at`, `id`");
+        ensureIndexExists("post_comments", "idx_post_comments_post_created_id", "`post_id`, `created_at`, `id`");
+        ensureIndexExists("post_comments", "idx_post_comments_author_created_id", "`author_id`, `created_at`, `id`");
+        ensureIndexExists("auth_tokens", "idx_auth_tokens_expires_at", "`expires_at`");
+    }
+
     private void ensureColumnExists(String tableName, String columnName, String columnDefinition) {
         Integer count = jdbcTemplate.queryForObject(
                 INFORMATION_SCHEMA_COLUMNS_QUERY,
@@ -183,6 +202,24 @@ public class SchemaInitializer implements CommandLineRunner {
                 ALTER TABLE `%s`
                 ADD COLUMN `%s` %s
                 """.formatted(tableName, columnName, columnDefinition));
+    }
+
+    private void ensureIndexExists(String tableName, String indexName, String columns) {
+        Integer count = jdbcTemplate.queryForObject(
+                INFORMATION_SCHEMA_STATISTICS_QUERY,
+                Integer.class,
+                tableName,
+                indexName
+        );
+
+        if (count != null && count > 0) {
+            return;
+        }
+
+        jdbcTemplate.execute("""
+                CREATE INDEX `%s`
+                ON `%s` (%s)
+                """.formatted(indexName, tableName, columns));
     }
 
     private void ensureLongTextColumn(String tableName, String columnName) {

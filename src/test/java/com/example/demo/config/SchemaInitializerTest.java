@@ -22,6 +22,9 @@ class SchemaInitializerTest {
         initializer.run();
 
         verify(jdbcTemplate, times(7)).execute(org.mockito.ArgumentMatchers.startsWith("ALTER TABLE"));
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_posts_created_updated_id`"));
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_post_comments_post_created_id`"));
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_auth_tokens_expires_at`"));
         verify(jdbcTemplate).update("UPDATE `posts` SET `like_count` = 0 WHERE `like_count` IS NULL");
         verify(jdbcTemplate).update("UPDATE `posts` SET `bookmark_count` = 0 WHERE `bookmark_count` IS NULL");
         verify(jdbcTemplate).update("UPDATE `posts` SET `view_count` = 0 WHERE `view_count` IS NULL");
