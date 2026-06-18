@@ -3,12 +3,15 @@ package com.example.demo.post;
 import com.example.demo.auth.AdminAccess;
 import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -20,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Transactional(readOnly = true)
 public class PostService {
+    private static final Duration VIEW_COUNT_WINDOW = Duration.ofHours(12);
     private static final String DEVTALK_BOT_USERNAME = "seed_writer";
     private static final String DEVTALK_BOT_NICKNAME = "Devtalk";
     private static final String DEVTALK_MANAGER_EMAIL = "s25002@gsm.hs.kr";
@@ -39,6 +43,7 @@ public class PostService {
     private final PostBookmarkRepository bookmarkRepository;
     private final PostLikeRepository likeRepository;
     private final PostCommentLikeRepository commentLikeRepository;
+    private final PostViewRepository postViewRepository;
     private final NotificationService notificationService;
 
     public PostService(
@@ -47,6 +52,7 @@ public class PostService {
             PostBookmarkRepository bookmarkRepository,
             PostLikeRepository likeRepository,
             PostCommentLikeRepository commentLikeRepository,
+            PostViewRepository postViewRepository,
             NotificationService notificationService
     ) {
         this.postRepository = postRepository;
@@ -54,6 +60,7 @@ public class PostService {
         this.bookmarkRepository = bookmarkRepository;
         this.likeRepository = likeRepository;
         this.commentLikeRepository = commentLikeRepository;
+        this.postViewRepository = postViewRepository;
         this.notificationService = notificationService;
     }
 
@@ -114,7 +121,7 @@ public class PostService {
     public PostResponse getPost(Long id, boolean track, AppUser viewer) {
         Post post = findPost(id);
         requireReadablePost(post, viewer);
-        if (track) post.incrementViewCount();
+        if (track) trackView(post, viewer);
         return toResponse(post, viewer);
     }
 
@@ -294,6 +301,44 @@ public class PostService {
     private PostComment findComment(Long postId, Long commentId) {
         return commentRepository.findByIdAndPostId(commentId, postId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "COMMENT_NOT_FOUND"));
+    }
+
+    private void trackView(Post post, AppUser viewer) {
+        if (!canTrackView(post, viewer)) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        Instant cutoff = now.minus(VIEW_COUNT_WINDOW);
+        PostView existingView = postViewRepository.findByUserAndPost(viewer, post).orElse(null);
+
+        if (existingView != null) {
+            if (existingView.getViewedAt().isAfter(cutoff)) {
+                return;
+            }
+            existingView.updateViewedAt(now);
+            post.incrementViewCount();
+            return;
+        }
+
+        try {
+            postViewRepository.saveAndFlush(new PostView(viewer, post, now));
+            post.incrementViewCount();
+        } catch (DataIntegrityViolationException ignored) {
+            // A concurrent request already recorded the view for this user/post pair.
+        }
+    }
+
+    private boolean canTrackView(Post post, AppUser viewer) {
+        return viewer != null
+                && viewer.getId() != null
+                && !isAuthor(post, viewer);
+    }
+
+    private boolean isAuthor(Post post, AppUser viewer) {
+        return viewer != null
+                && viewer.getId() != null
+                && viewer.getId().equals(post.getAuthor().getId());
     }
 
     private PostPayload normalizePostPayload(PostPayload request, Post existing) {

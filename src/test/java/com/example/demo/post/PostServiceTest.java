@@ -6,11 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +26,16 @@ class PostServiceTest {
     private final PostBookmarkRepository bookmarkRepository = mock(PostBookmarkRepository.class);
     private final PostLikeRepository likeRepository = mock(PostLikeRepository.class);
     private final PostCommentLikeRepository commentLikeRepository = mock(PostCommentLikeRepository.class);
-    private final PostService service = new PostService(postRepository, commentRepository, bookmarkRepository, likeRepository, commentLikeRepository, mock(NotificationService.class));
+    private final PostViewRepository postViewRepository = mock(PostViewRepository.class);
+    private final PostService service = new PostService(
+            postRepository,
+            commentRepository,
+            bookmarkRepository,
+            likeRepository,
+            commentLikeRepository,
+            postViewRepository,
+            mock(NotificationService.class)
+    );
 
     @Test
     void createPostRejectsBlankTitleOrContent() {
@@ -99,6 +110,63 @@ class PostServiceTest {
 
         assertEquals("100", response.id());
         assertEquals("talk", response.category());
+    }
+
+    @Test
+    void getPostDoesNotIncreaseViewCountForAuthor() {
+        AppUser author = user(1L, "author@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+
+        PostResponse response = service.getPost(100L, true, author);
+
+        assertEquals(0, response.viewCount());
+        verifyNoInteractions(postViewRepository);
+    }
+
+    @Test
+    void getPostIncreasesViewCountForFirstViewByAnotherUser() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(postViewRepository.findByUserAndPost(viewer, post)).thenReturn(Optional.empty());
+        when(postViewRepository.saveAndFlush(any(PostView.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PostResponse response = service.getPost(100L, true, viewer);
+
+        assertEquals(1, response.viewCount());
+        verify(postViewRepository).saveAndFlush(any(PostView.class));
+    }
+
+    @Test
+    void getPostDoesNotIncreaseViewCountWithinTwelveHours() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        PostView view = new PostView(viewer, post, Instant.now().minusSeconds(11 * 60 * 60));
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(postViewRepository.findByUserAndPost(viewer, post)).thenReturn(Optional.of(view));
+
+        PostResponse response = service.getPost(100L, true, viewer);
+
+        assertEquals(0, response.viewCount());
+    }
+
+    @Test
+    void getPostIncreasesViewCountAgainAfterTwelveHours() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser viewer = user(2L, "viewer@example.com");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        Instant previousViewedAt = Instant.now().minusSeconds(13 * 60 * 60);
+        PostView view = new PostView(viewer, post, previousViewedAt);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+        when(postViewRepository.findByUserAndPost(viewer, post)).thenReturn(Optional.of(view));
+
+        PostResponse response = service.getPost(100L, true, viewer);
+
+        assertEquals(1, response.viewCount());
+        assertTrue(view.getViewedAt().isAfter(previousViewedAt));
     }
 
     @Test

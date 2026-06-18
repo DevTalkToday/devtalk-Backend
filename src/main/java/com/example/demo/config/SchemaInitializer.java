@@ -48,6 +48,7 @@ public class SchemaInitializer implements CommandLineRunner {
         createPostBookmarksTable();
         createPostLikesTable();
         createPostCommentLikesTable();
+        createPostViewsTable();
         createFollowsTable();
         ensurePostCounterColumns();
         ensurePerformanceIndexes();
@@ -108,6 +109,21 @@ public class SchemaInitializer implements CommandLineRunner {
                     UNIQUE KEY `uk_post_comment_likes_user_comment` (`user_id`, `comment_id`),
                     INDEX `idx_post_comment_likes_user_created` (`user_id`, `created_at`),
                     INDEX `idx_post_comment_likes_comment` (`comment_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """);
+    }
+
+    private void createPostViewsTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS `post_views` (
+                    `id` BIGINT NOT NULL AUTO_INCREMENT,
+                    `user_id` BIGINT NOT NULL,
+                    `post_id` BIGINT NOT NULL,
+                    `viewed_at` DATETIME(6) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_post_views_user_post` (`user_id`, `post_id`),
+                    INDEX `idx_post_views_user_viewed` (`user_id`, `viewed_at`),
+                    INDEX `idx_post_views_post` (`post_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """);
     }

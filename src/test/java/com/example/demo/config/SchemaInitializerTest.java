@@ -22,6 +22,7 @@ class SchemaInitializerTest {
         initializer.run();
 
         verify(jdbcTemplate, times(7)).execute(org.mockito.ArgumentMatchers.startsWith("ALTER TABLE"));
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS `post_views`"));
         verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_posts_created_updated_id`"));
         verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_post_comments_post_created_id`"));
         verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE INDEX `idx_auth_tokens_expires_at`"));
@@ -47,6 +48,7 @@ class SchemaInitializerTest {
         initializer.run();
 
         verify(jdbcTemplate, never()).execute(org.mockito.ArgumentMatchers.startsWith("ALTER TABLE"));
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS `post_views`"));
         verify(jdbcTemplate).update(org.mockito.ArgumentMatchers.contains("FROM `post_likes`"));
         verify(jdbcTemplate).update(org.mockito.ArgumentMatchers.contains("FROM `post_bookmarks`"));
         verify(jdbcTemplate).update(org.mockito.ArgumentMatchers.contains("FROM `post_comment_likes`"));
