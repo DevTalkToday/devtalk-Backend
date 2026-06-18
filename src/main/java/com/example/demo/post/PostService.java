@@ -301,8 +301,8 @@ public class PostService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "TITLE_AND_CONTENT_REQUIRED");
         }
 
-        String title = clamp(request == null ? null : request.title(), 120);
-        String content = trim(request == null ? null : request.content());
+        String title = clamp(request == null ? null : request.title(), 100);
+        String content = clamp(request == null ? null : request.content(), 2000);
         String category = normalizeLower(request == null ? null : request.category());
         if (!CATEGORIES.contains(category)) category = existing == null ? "talk" : existing.getCategory();
         String bugStatus = normalizeLower(request == null || request.bug() == null ? null : request.bug().status());

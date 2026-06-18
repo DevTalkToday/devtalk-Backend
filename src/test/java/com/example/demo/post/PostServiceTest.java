@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.demo.auth.AppUser;
 import com.example.demo.notification.NotificationService;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,20 @@ class PostServiceTest {
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, error.getStatusCode());
         assertEquals("TITLE_AND_CONTENT_REQUIRED", error.getReason());
+    }
+
+    @Test
+    void createPostClampsTitleAndContentLengths() {
+        AppUser author = user(1L, "author@example.com");
+        String longTitle = String.join("", Collections.nCopies(130, "t"));
+        String longContent = String.join("", Collections.nCopies(2105, "c"));
+        PostPayload payload = new PostPayload(longTitle, longContent, "talk", List.of(), List.of(), null, null);
+        when(postRepository.save(any(Post.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PostResponse response = service.createPost(payload, author);
+
+        assertEquals(100, response.title().length());
+        assertEquals(2000, response.content().length());
     }
 
     @Test
