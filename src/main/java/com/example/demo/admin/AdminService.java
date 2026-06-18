@@ -16,6 +16,7 @@ import com.example.demo.post.PostCommentRepository;
 import com.example.demo.post.PostCommentLikeRepository;
 import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostRepository;
+import com.example.demo.post.PostViewRepository;
 import com.example.demo.report.ReportRepository;
 import com.example.demo.settings.NotificationPreferenceRepository;
 import java.util.Comparator;
@@ -38,6 +39,7 @@ public class AdminService {
     private final PostBookmarkRepository postBookmarkRepository;
     private final PostCommentLikeRepository postCommentLikeRepository;
     private final PostLikeRepository postLikeRepository;
+    private final PostViewRepository postViewRepository;
     private final AuthTokenRepository authTokenRepository;
     private final OAuthAccountRepository oAuthAccountRepository;
     private final FriendshipRepository friendshipRepository;
@@ -54,6 +56,7 @@ public class AdminService {
             PostBookmarkRepository postBookmarkRepository,
             PostCommentLikeRepository postCommentLikeRepository,
             PostLikeRepository postLikeRepository,
+            PostViewRepository postViewRepository,
             AuthTokenRepository authTokenRepository,
             OAuthAccountRepository oAuthAccountRepository,
             FriendshipRepository friendshipRepository,
@@ -69,6 +72,7 @@ public class AdminService {
         this.postBookmarkRepository = postBookmarkRepository;
         this.postCommentLikeRepository = postCommentLikeRepository;
         this.postLikeRepository = postLikeRepository;
+        this.postViewRepository = postViewRepository;
         this.authTokenRepository = authTokenRepository;
         this.oAuthAccountRepository = oAuthAccountRepository;
         this.friendshipRepository = friendshipRepository;
@@ -129,6 +133,7 @@ public class AdminService {
         postBookmarkRepository.deleteByUser(target);
         postCommentLikeRepository.deleteByUser(target);
         postLikeRepository.deleteByUser(target);
+        postViewRepository.deleteByUser(target);
         notificationRepository.deleteByRecipientOrActor(target, target);
         messageRepository.deleteBySenderOrRecipient(target, target);
         friendshipRepository.deleteByRequesterOrAddressee(target, target);
@@ -173,6 +178,7 @@ public class AdminService {
             postCommentLikeRepository.deleteByCommentPost(post);
             postLikeRepository.deleteByPost(post);
             postBookmarkRepository.deleteByPost(post);
+            postViewRepository.deleteByPost(post);
             for (PostComment comment : List.copyOf(post.getComments())) {
                 reportRepository.deleteByTargetTypeAndTargetId("comment", String.valueOf(comment.getId()));
             }

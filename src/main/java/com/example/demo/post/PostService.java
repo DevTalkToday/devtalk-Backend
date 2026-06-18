@@ -150,6 +150,7 @@ public class PostService {
         commentLikeRepository.deleteByCommentPost(post);
         likeRepository.deleteByPost(post);
         bookmarkRepository.deleteByPost(post);
+        postViewRepository.deleteByPost(post);
         postRepository.delete(post);
     }
 

@@ -20,6 +20,7 @@ import com.example.demo.post.PostCommentLikeRepository;
 import com.example.demo.post.PostCommentRepository;
 import com.example.demo.post.PostLikeRepository;
 import com.example.demo.post.PostRepository;
+import com.example.demo.post.PostViewRepository;
 import com.example.demo.report.ReportRepository;
 import com.example.demo.settings.NotificationPreferenceRepository;
 import java.util.List;
@@ -32,6 +33,7 @@ class AdminServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final PostRepository postRepository = mock(PostRepository.class);
     private final PostCommentRepository commentRepository = mock(PostCommentRepository.class);
+    private final PostViewRepository postViewRepository = mock(PostViewRepository.class);
     private final AdminService service = new AdminService(
             userRepository,
             postRepository,
@@ -39,6 +41,7 @@ class AdminServiceTest {
             mock(PostBookmarkRepository.class),
             mock(PostCommentLikeRepository.class),
             mock(PostLikeRepository.class),
+            postViewRepository,
             mock(AuthTokenRepository.class),
             mock(OAuthAccountRepository.class),
             mock(FriendshipRepository.class),

@@ -103,6 +103,7 @@ class PostServiceTest {
 
         service.deletePost(100L, admin);
 
+        verify(postViewRepository).deleteByPost(post);
         verify(postRepository).delete(post);
     }
 
