@@ -83,6 +83,30 @@ class PostServiceTest {
     }
 
     @Test
+    void getPostMarksAdminAsAbleToDeleteOthersPost() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser admin = user(2L, "s25002@gsm.hs.kr");
+        Post post = withId(new Post("title", "body", "bug", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+
+        PostResponse response = service.getPost(100L, false, admin);
+
+        assertTrue(response.canDelete());
+    }
+
+    @Test
+    void deletePostAllowsAdminToDeleteOthersPost() {
+        AppUser author = user(1L, "author@example.com");
+        AppUser admin = user(2L, "s25002@gsm.hs.kr");
+        Post post = withId(new Post("title", "body", "talk", author), 100L);
+        when(postRepository.findById(100L)).thenReturn(Optional.of(post));
+
+        service.deletePost(100L, admin);
+
+        verify(postRepository).delete(post);
+    }
+
+    @Test
     void getPostHidesPrivatePostFromNonAuthor() {
         AppUser author = user(1L, "author@example.com");
         AppUser viewer = user(2L, "viewer@example.com");

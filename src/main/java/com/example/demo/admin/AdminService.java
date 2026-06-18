@@ -138,6 +138,21 @@ public class AdminService {
         return new UserDeleteResponse(userId, "deleted");
     }
 
+    @Transactional
+    public void deleteUserMajor(AppUser actor, Long userId, String major) {
+        AdminAccess.requireAdmin(actor);
+
+        String normalizedMajor = normalizeMajor(major);
+        if (normalizedMajor.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "MAJOR_REQUIRED");
+        }
+
+        AppUser target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND"));
+
+        target.getMajors().removeIf(value -> normalizedMajor.equals(value));
+    }
+
     private void deleteUserComments(AppUser target) {
         List<PostComment> comments = commentRepository.findByAuthor(target);
         for (PostComment comment : comments) {
@@ -168,6 +183,10 @@ public class AdminService {
     private void deleteUserReports(AppUser target) {
         reportRepository.deleteByReporterId(target.getId());
         reportRepository.deleteByTargetTypeAndTargetId("profile", String.valueOf(target.getId()));
+    }
+
+    private static String normalizeMajor(String major) {
+        return major == null ? "" : major.trim();
     }
 
     private static Map<Long, Long> toCountMap(List<Object[]> rows) {

@@ -29,4 +29,11 @@ class AdminControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Bearer token is required"));
     }
+
+    @Test
+    void deleteUserMajorRequiresBearerToken() throws Exception {
+        mvc.perform(delete("/admin/users/20/majors").param("major", "backend"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bearer token is required"));
+    }
 }
