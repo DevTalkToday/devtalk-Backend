@@ -66,6 +66,17 @@ class PostServiceTest {
     }
 
     @Test
+    void createPostAcceptsInfoCategory() {
+        AppUser author = user(1L, "author@example.com");
+        PostPayload payload = new PostPayload("title", "body", "info", List.of(), List.of(), null, null);
+        when(postRepository.save(any(Post.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PostResponse response = service.createPost(payload, author);
+
+        assertEquals("info", response.category());
+    }
+
+    @Test
     void updatePostRejectsNonAuthor() {
         AppUser author = user(1L, "author@example.com");
         AppUser otherUser = user(2L, "other@example.com");

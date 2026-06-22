@@ -33,7 +33,7 @@ public class PostService {
     private static final String RESOLUTION_MODE_UNRESOLVED = "UNRESOLVED";
     private static final String RESOLUTION_MODE_ANY_STATUS = "ANY_STATUS";
     private static final String PRIVATE_POST_CATEGORY = "talk";
-    private static final Set<String> CATEGORIES = Set.of("qna", "bug", "discussion", "talk");
+    private static final Set<String> CATEGORIES = Set.of("qna", "bug", "discussion", "info", "talk");
     private static final Set<String> SORTS = Set.of("latest", "oldest", "popular", "views", "comments");
     private static final Set<String> RESOLUTIONS = Set.of("all", "resolved", "unresolved");
     private static final Set<String> BUG_STATUSES = Set.of("open", "investigating", "fixed", "closed");
